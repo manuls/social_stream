@@ -162,7 +162,9 @@
 				}
 				const processedText = replaceEmotesWithImages(escapeHtml(node.textContent)); 
 				const tempDiv = document.createElement('div');
-				tempDiv.innerHTML = processedText;
+				try {
+					tempDiv.innerHTML = processedText;
+				} catch(e){}
 				
 				Array.from(tempDiv.childNodes).forEach(child => {
 					if (child.nodeType === 3) {
@@ -200,6 +202,18 @@
 				}
 			}
 		}
+		
+		const baseUrl = `${window.location.protocol}//${window.location.host}`;
+		
+		function getAbsoluteSrc(imgNode) {
+		  if (imgNode.src.startsWith('http')) {
+			return imgNode.src;
+		  } else if (imgNode.src.startsWith('/')) {
+			return baseUrl + imgNode.src;
+		  } else {
+			return `${baseUrl}/${imgNode.src}`;
+		  }
+		}
 
 		function processEmote(emoteNode) {
 			if (settings.textonlymode){
@@ -230,7 +244,9 @@
 				
 				let newImgAttributes = 'class="regular-emote"';
 				if (emoteNode.src) {
-					newImgAttributes += ` src="${emoteNode.src.replace('/1.0', '/2.0')}"`;
+					
+					const newImageURL = getAbsoluteSrc(emoteNode);
+					newImgAttributes += ` src="${newImageURL.replace('/1.0', '/2.0')}"`;
 				}
 				if (emoteNode.srcset) {
 					let newSrcset = emoteNode.srcset.replace(/^[^,]+,\s*/, ''); // remove first low-res srcset.
@@ -269,6 +285,12 @@
 
 	function processMessage(ele, event=false) {
 		// twitch
+		
+		console.log(ele);
+		
+		if (ele.classList.contains("chat-line__unpublished-message-body") || ele.querySelector(".chat-line__unpublished-message-body")){
+			return;
+		}
 
 		var chatsticker = false;
 		var chatmessage = "";
@@ -610,6 +632,7 @@
 	var settings = {};
 	var BTTV = false;
 	var SEVENTV = false;
+	var FFZ = false;
 	// settings.textonlymode
 	// settings.captureevents
 
@@ -641,6 +664,9 @@
 						if (settings.seventv) {
 							chrome.runtime.sendMessage(chrome.runtime.id, { getSEVENTV: true }, function (response) {});
 						}
+						if (settings.ffz) {
+							chrome.runtime.sendMessage(chrome.runtime.id, { getFFZ: true }, function (response) {});
+						}
 						return;
 					}
 					if ("SEVENTV" in request) {
@@ -653,6 +679,13 @@
 					if ("BTTV" in request) {
 						BTTV = request.BTTV;
 						//console.log(BTTV);
+						sendResponse(true);
+						mergeEmotes();
+						return;
+					}
+					if ("FFZ" in request) {
+						FFZ = request.FFZ;
+						//console.log(FFZ);
 						sendResponse(true);
 						mergeEmotes();
 						return;
@@ -681,6 +714,11 @@
 					}
 					if (settings.seventv && !SEVENTV) {
 						chrome.runtime.sendMessage(chrome.runtime.id, { getSEVENTV: true }, function (response) {
+							//	console.log(response);
+						});
+					}
+					if (settings.ffz && !FFZ) {
+						chrome.runtime.sendMessage(chrome.runtime.id, { getFFZ: true }, function (response) {
 							//	console.log(response);
 						});
 					}
@@ -742,6 +780,21 @@
 				} catch (e) {}
 			}
 		}
+		if (FFZ) {
+			//console.log(FFZ);
+			if (settings.ffz) {
+				try {
+					if (FFZ.channelEmotes) {
+						EMOTELIST = deepMerge(FFZ.channelEmotes, EMOTELIST);
+					}
+				} catch (e) {}
+				try {
+					if (FFZ.globalEmotes) {
+						EMOTELIST = deepMerge(FFZ.globalEmotes, EMOTELIST);
+					}
+				} catch (e) {}
+			}
+		}
 		
 		// for testing.
  		//EMOTELIST = deepMerge({
@@ -753,6 +806,8 @@
 	}
 
 	function processEvent(ele) {
+		
+		console.log(ele);
 		
 		try {
 			ele = ele.childNodes[0];
@@ -831,52 +886,75 @@
 			if (!isExtensionOn || document.referrer.includes("twitch.tv/popout/")) {
 				return;
 			}
-			mutations.forEach(function (mutation) {
-				if (mutation.target === target) {
-					return;
-				} else if (mutation.type === "attributes") {
-					if (mutation.attributeName == "class" && mutation.target.classList.contains("deleted")) {
-						deleteThis(mutation.target);
-					} else if (mutation.attributeName == "data-a-target" && mutation && mutation.target && mutation.target.data && mutation.target.data.aTarget && mutation.target.data.aTarget == "chat-deleted-message-placeholder") {
+			mutations.forEach(function(mutation) {
+				if (mutation.target === target) return;
+
+				// Handle attribute mutations
+				if (mutation.type === "attributes") {
+					if ((mutation.attributeName === "class" && mutation.target.classList.contains("deleted")) ||
+						(mutation.attributeName === "data-a-target" && mutation.target.dataset?.aTarget === "chat-deleted-message-placeholder")) {
 						deleteThis(mutation.target);
 					}
-				} else if (mutation.type === "childList" && mutation.addedNodes.length) {
-					for (var i = 0, len = mutation.addedNodes.length; i < len; i++) {
+					return;
+				}
+
+				// Handle childList mutations
+				if (mutation.type === "childList" && mutation.addedNodes.length) {
+					for (const node of mutation.addedNodes) {
 						try {
-							if (mutation.addedNodes[i].dataset.aTarget == "chat-deleted-message-placeholder") {
-								deleteThis(mutation.addedNodes[i]);
-								continue;
-							} else if (mutation.addedNodes[i].querySelector('[data-a-target="chat-deleted-message-placeholder"]')) {
-								deleteThis(mutation.addedNodes[i]);
+							if (node.ignore) continue;
+							node.ignore = true;
+
+							// Get direct child if it exists
+							const directChild = node.firstElementChild;
+							
+							// Check for deleted messages
+							if (node.dataset?.aTarget === "chat-deleted-message-placeholder" || 
+								(directChild?.dataset?.aTarget === "chat-deleted-message-placeholder")) {
+								deleteThis(node);
 								continue;
 							}
 
-							if (mutation.addedNodes[i].ignore) {
-								continue;
-							}
+							// Handle events if enabled
+							if (settings.captureevents) {
+								const isUserNoticeLine = 
+									node.dataset?.testSelector === "user-notice-line" ||
+									node.classList?.contains("user-notice-line") ||
+									directChild?.dataset?.testSelector === "user-notice-line" ||
+									directChild?.classList?.contains("user-notice-line");
 
-							mutation.addedNodes[i].ignore = true;
-							
-							if (settings.captureevents && mutation.addedNodes[i].dataset && mutation.addedNodes[i].dataset.testSelector == "user-notice-line") {
-								processEvent(mutation.addedNodes[i]);
-							} else if (settings.captureevents && mutation.addedNodes[i].className && mutation.addedNodes[i].classList.contains("user-notice-line")) {
-								processEvent(mutation.addedNodes[i]);
-							}
-							
-							if (mutation.addedNodes[i].className && (mutation.addedNodes[i].classList.contains("seventv-message") || mutation.addedNodes[i].classList.contains("chat-line__message") || (mutation.addedNodes[i].querySelector && mutation.addedNodes[i].querySelector(".paid-pinned-chat-message-content-wrapper")))) {
-								callback(mutation.addedNodes[i]);
-							} else if (mutation.addedNodes[i].querySelector(".chat-line__message")) {
-								var ele = mutation.addedNodes[i].querySelector(".chat-line__message");
-								
-								if (ele.ignore) { 
-									continue;
-								} else {
-									ele.ignore = true;
-									callback(ele);
+								if (isUserNoticeLine) {
+									processEvent(directChild?.dataset?.testSelector === "user-notice-line" ? 
+										directChild : node);
 								}
 							}
-							
-						} catch (e) {}
+
+							// Handle chat messages
+							const isDirectMessage = 
+								node.classList?.contains("seventv-message") ||
+								node.classList?.contains("chat-line__message") ||
+								directChild?.classList?.contains("seventv-message") ||
+								directChild?.classList?.contains("chat-line__message");
+
+							const hasPinnedMessage = 
+								node.classList?.contains("paid-pinned-chat-message-content-wrapper") ||
+								directChild?.classList?.contains("paid-pinned-chat-message-content-wrapper");
+
+							if (isDirectMessage || hasPinnedMessage) {
+								callback(directChild?.classList?.contains("chat-line__message") ? 
+									directChild : node);
+								continue;
+							}
+
+							// Check for nested chat message as direct child
+							if (directChild?.classList?.contains("chat-line__message") && !directChild.ignore) {
+								directChild.ignore = true;
+								callback(directChild);
+							}
+
+						} catch (e) {
+							// Silent error handling
+						}
 					}
 				}
 			});
@@ -888,7 +966,7 @@
 				subtree: true, // Observe the target node and its descendants
 				attributes: true, // Observe attributes changes
 				attributeOldValue: true, // Optionally capture the old value of the attribute
-				attributeFilter: ["data-a-target", "class"] // Only observe changes to 'is-deleted' attribute
+				attributeFilter: ["data-a-target", "class", "data-test-selector"] // Only observe changes to 'is-deleted' attribute
 			};
 		} else {
 			var config = {
@@ -896,7 +974,7 @@
 				subtree: true, // Observe the target node and its descendants
 				attributes: true, // Observe attributes changes
 				attributeOldValue: true, // Optionally capture the old value of the attribute
-				attributeFilter: ["data-a-target"] // Only observe changes to 'is-deleted' attribute
+				attributeFilter: ["data-a-target", "data-test-selector"] // Only observe changes to 'is-deleted' attribute
 			};
 		}
 		var MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
@@ -912,10 +990,16 @@
 	var checkReady = setInterval(function () {
 		counter += 1;
 
-		if (counter > 3) {
-			checkElement = ".chat-room__content";
+		if (counter == 5) {
+			checkElement = ".chat-list--default, .chat-room__content .chat-line__message";
 			console.log("checkElement wasn't found; trying alternative");
 		}
+		
+		if (counter == 10) {
+			checkElement = ".chat-list--default, .chat-room__content .chat-line__message, #root .chat-line__message";
+			console.log("falling back to detecting the root also");
+		}
+		
 		if (document.querySelector(checkElement)) {
 			// just in case
 			console.log("Social Stream Start");
@@ -926,6 +1010,7 @@
 					clear[i].ignore = true; // don't let already loaded messages to re-load.
 				}
 				console.log("Social Stream ready to go");
+				console.log(checkElement);
 				onElementInsertedTwitch(document.querySelector(checkElement), function (element) {
 					setTimeout(
 						function (element) {
@@ -944,7 +1029,7 @@
 						document.querySelector(".consent-banner").remove();
 					}
 				}
-			}, 4500);
+			}, 3000);
 		}
 
 		if (document.querySelector('[data-a-target="consent-banner-accept"]')) {

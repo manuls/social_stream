@@ -1,34 +1,32 @@
 {
   "name": "Social Stream Ninja",
   "description": "Powerful tooling to engage live chat on Youtube, Twitch, Zoom, and more.",
-  "manifest_version": 2,
-  "version": "1.81.6",
+  "manifest_version": 3,
+  "version": "3.2.21",
   "homepage_url": "http://socialstream.ninja/",
   "icons": {
     "128": "icons/icon-128.png"
   },
   "background": {
-    "scripts": [
-      "./thirdparty/webmidi3.js",
-      "./thirdparty/tf.min.js",
-      "./thirdparty/sentiment.js",
-      "background.js",
-	   "./thirdparty/lunr.js",
-	  "ai.js",
-      "./thirdparty/xlsx.full.min.js"
-    ],
-    "persistent": true
+    "service_worker": "service_worker.js"
   },
-  "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "permissions": [
     "webNavigation",
     "notifications",
-	"http://localhost:11434/api/generate",
-	"http://127.0.0.1:11434/api/generate",
-	"https://zap.stream/*",
-	"https://www.bigo.tv/*",
+    "storage",
+    "debugger",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:11434/api/generate",
+    "http://127.0.0.1:11434/api/generate",
+    "https://zap.stream/*",
+    "https://www.bigo.tv/*",
     "https://chaturbate.com/*/",
-    "https://cherry.tv/*",
+    "https://cherry.tv/*",				  
     "https://beamstream.gg/*/chat",
     "https://socialstream.ninja/sources/websocket/*",
     "https://socialstream.ninja/websocket/*",
@@ -37,13 +35,18 @@
     "https://kiwiirc.com/nextclient/*",
     "https://webchat.quakenet.org/*",
     "https://*.cbox.ws/box/*",
-	"https://community.talkinghealthtech.com/live/*",
+    "https://cbox.ws/box/*",
+    "https://community.talkinghealthtech.com/live/*",
     "https://community.insidethe.show/live/*",
+	"https://members.firstinfam.com/live/*",
     "https://*.circle.so/*",
     "https://tellonym.me/*",
-    "https://*.wix.com/*",
-	"https://verticalpixelzone.com/*",
-	"https://rutube.ru/live/chat/*/",
+    "https://chat.wix.com/*",
+    "https://live.wix.com/*",
+    "https://www.wix.com/*",
+    "https://wix.com/*",
+    "https://verticalpixelzone.com/*",
+    "https://rutube.ru/live/chat/*/",
     "https://chat.castr.io/*",
     "https://editor.wixapps.net/render/prod/modals/wix-vod-widget/*",
     "https://www.x.com/*",
@@ -59,6 +62,7 @@
     "https://meet.google.com/*",
     "https://play.quickchannel.com/*",
     "https://kick.com/*/chatroom",
+	"https://kick.com/popout/*/chat",
     "https://chatroll.com/embed/chat/*",
     "https://www.nimo.tv/popout/chat/*",
     "https://dashboard.nimo.tv/popout/chat/*",
@@ -88,12 +92,12 @@
     "https://web.whatsapp.com/",
     "https://rumble.com/*",
     "https://www.amazon.com/live*",
-	"https://www.amazon.com/b/?node=*&broadcast=*",
+    "https://www.amazon.com/b/?node=*&broadcast=*",
     "https://*.telegram.org/*",
     "https://*.webex.com/*",
     "https://webex.com/*",
     "https://www.linkedin.com/*",
-    "https://*.vdo.ninja/*",
+    "https://vdo.ninja/*",
     "https://youtube.com/*",
     "https://www.youtube.com/*",
     "https://studio.youtube.com/*",
@@ -119,15 +123,16 @@
     "https://teams.live.com/*",
     "https://teams.microsoft.com/*",
     "https://livestream.com/accounts/*",
-    "https://*/plugins/livechat/*router/webchat/room/*",
-    "https://*/p/livechat/room?room=*",
+    "https://joinpeertube.org/*/plugins/livechat/*router/webchat/room/*",
+    "https://joinpeertube.org/*/p/livechat/room?room=*",
+	"https://*/p/livechat/room?room=*",
     "https://app.slack.com/client/*",
     "https://*.rooter.gg/*",
     "https://www.nonolive.com/*",
     "https://www.tradingview.com/streams/*",
     "https://app.chime.aws/meetings/*",
     "https://*.loco.gg/*",
-    "https://joystick.tv/u/*/chat",
+    "https://joystick.tv/u/*/chat",	   
     "https://www.buzzit.ca/event/*/chat",
     "https://*.floatplane.com/popout/livechat",
     "https://www.threads.net/*",
@@ -156,17 +161,20 @@
     "https://estrim.com/publications/view/*",
     "https://vk.com/*",
     "https://wave.video/*",
-	"https://www.sooplive.com/chat/*",
-    "storage",
-    "debugger"
+	  "https://www.sooplive.com/chat/*",
+	  "https://*.on24.com/view/*",
+    "https://*.meetme.com/*",
+    "https://meetme.com/*"
   ],
-  "browser_action": {
-    "default_popup": "popup.html"
-  },
   "content_scripts": [
     {
       "js": [ "./sources/zapstream.js" ],
       "matches": [ "https://zap.stream/*" ]
+    },
+    {
+      "js": [ "./sources/meetme.js" ],
+      "matches": [ "https://*.meetme.com/*","https://meetme.com/*" ],
+      "all_frames": true
     },
 	{
       "js": [ "./sources/bigo.js" ],
@@ -244,7 +252,7 @@
     },
     {
       "js": [ "./sources/circle.js" ],
-      "matches": [ "https://community.insidethe.show/*", "https://community.talkinghealthtech.com/*", "https://*.circle.so/*" ]
+      "matches": [ "https://community.insidethe.show/*", "https://community.talkinghealthtech.com/*", "https://members.firstinfam.com/*","https://*.circle.so/*" ]
     },
     {
       "js": [ "./sources/sessions.js" ],
@@ -340,7 +348,7 @@
     },
 	{
       "js": [ "./sources/x.js" ],
-      "matches": [ "https://www.x.com/i/broadcasts/*/chat", "https://x.com/i/broadcasts/*/chat",  "https://www.twitter.com/*", "https://twitter.com/*" ]
+      "matches": [ "https://www.twitter.com/*", "https://twitter.com/*", "https://x.com/*/chat", "https://www.x.com/*/chat"]
     },
     {
       "js": [ "./sources/static/threads.js" ],
@@ -428,7 +436,11 @@
     },
     {
       "js": [ "./sources/kick.js" ],
-      "matches": [ "https://kick.com/*/chatroom" ]
+      "matches": [ "https://kick.com/*/chatroom"]
+    },
+	{
+      "js": [ "./sources/kick_new.js" ],
+      "matches": [ "https://kick.com/popout/*/chat"]
     },
     {
       "js": [ "./sources/cloudhub.js" ],
@@ -500,7 +512,7 @@
     },
     {
       "js": [ "./sources/dlive.js" ],
-      "matches": [ "https://dlive.tv/*" ]
+      "matches": [ "https://dlive.tv/c/*" ]
     },
     {
       "js": [ "./sources/instafeed.js" ],
@@ -568,6 +580,10 @@
       "js": [ "./sources/livestream.js" ],
       "matches": [ "https://livestream.com/accounts/*" ]
     },
+	{
+      "js": [ "./sources/on24.js" ],
+      "matches": [ "https://*.on24.com/view/*" ]
+    },
     {
       "js": [ "./sources/teams.js" ],
       "matches": [ "https://teams.microsoft.com/*" ],
@@ -595,7 +611,7 @@
     },
     {
       "js": [ "./sources/vdoninja.js" ],
-      "matches": [ "https://*.vdo.ninja/*popout.html*" ],
+      "matches": [ "https://vdo.ninja/popout.html*", "https://vdo.ninja/alpha/popout.html*", "https://vdo.ninja/beta/popout.html*" ],
 	  "all_frames": true
     },
     {
@@ -647,5 +663,8 @@
   ],
   "options_ui": {
     "page": "settings/options.html"
+  },
+  "action": {
+    "default_popup": "popup.html"
   }
 }

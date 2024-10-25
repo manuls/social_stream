@@ -37,6 +37,8 @@
     --hype-meter-color: #00ff5e;
     --waitlist-color: #ff00d2;
 	--ticker-color: #ff3a3bdd;
+	--gif-color: #9a3f7bdd;
+	--wordcloud-color: #6a6bffdd;
 	--poll-color: #a3ff3bdd;
     --download-link: blue;
     --font-family: "Segoe UI", Tahoma, "Sora", Roboto, Arial, sans-serif;
@@ -79,6 +81,66 @@
     }
 }
 
+@keyframes flash {
+  0%, 50%, 100% {
+    opacity: 1;
+  }
+  25%, 75% {
+    opacity: 0;
+  }
+}
+
+.flashing {
+  animation: flash 0.5s linear 1;
+}
+
+.username-list-container {
+	max-height: 80px;
+	overflow-y: auto;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+	padding: 5px;
+	font-family: Arial, sans-serif;
+	font-size: 12px;
+}
+.username-item {
+	display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    margin-bottom: 3px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    flex-direction: row;
+}
+.remove-username {
+	cursor: pointer;
+	color: #ff0000;
+	font-weight: bold;
+	margin-right: 8px;
+}
+.add-username-container {
+	display: flex;
+	margin-top: 5px;
+}
+#newUsername {
+	flex-grow: 1;
+	margin-right: 5px;
+}
+#addUsername {
+	cursor: pointer;
+}
+
+.hidelinks a[href^="http"] {
+  text-decoration: none; /* Remove default underline */
+  filter: blur(4px); /* Apply blur effect */
+  transition: filter 0.3s ease; /* Smooth transition for hover effect */
+}
+/* Remove blur on hover */
+.hidelinks a[href^="http"]:hover {
+  filter: blur(0);
+}
+
+
 #searchInput {
     appearance: none;
     position: fixed;
@@ -113,6 +175,18 @@
     cursor: pointer;
     display: block;
     height: 0;
+}
+
+.copy-link-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-left: 5px;
+    padding: 5px;
+}
+.copy-link-btn:hover {
+    background-color: #f0f0f0;
+    border-radius: 50%;
 }
 
 /* example of how to remotely load a font */
@@ -334,6 +408,13 @@ p a {
     font-size: 0.6rem;
 }
 
+.copy-link {
+    text-decoration: none;
+    color: var(--text-button-text);
+    font-size: 0.6rem;
+	cursor: copy!important;
+}
+
 #disableButton {
     appearance: none;
     position: sticky;
@@ -487,6 +568,14 @@ h2.waitlist_mode_title {
 
 h2.ticker_mode_title {
     color: var(--ticker-color);
+}
+
+h2.wordcloud_mode_title {
+    color: var(--wordcloud-color);
+}
+
+h2.custom_gif_commands_title {
+    color: var(--gif-color);
 }
 
 h2.poll_mode_title {
@@ -735,7 +824,7 @@ input:checked + .slider:before {
 .textInputContainer {
     position: relative;
     width: 200px;
-    margin-top: 2px;
+    margin-top: 10px;
     margin-bottom: 4px;
 }
 
@@ -768,6 +857,7 @@ input:checked + .slider:before {
     transition: all 0.2s;
     cursor: text;
     z-index: 1;
+	pointer-events: none;
 }
 
 .textInput + label::before {
@@ -804,6 +894,33 @@ input:checked + .slider:before {
     animation-delay: 0.2s;
 }
 
+.custom_gif_commands_title {
+    color: #00a6ff; /* You can adjust this color to match your theme */
+}
+
+.custom-gif-command-entry {
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.custom-gif-command-entry .textInputContainer {
+    margin-right: 10px;
+}
+
+.removeCustomGifCommand {
+    padding: 5px 10px;
+    background-color: #ff0000;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.removeCustomGifCommand:hover {
+    background-color: #cc0000;
+}
+
         </style>
     </head>
 
@@ -838,9 +955,12 @@ input:checked + .slider:before {
             <div class="link" title="This link will display chat messages as a streaming list. Use as an overlay or as a control dock.">
                 <h2 class="streaming_chat_title">
                     <span data-translate="streaming-chat-dockable">Streaming chat (dockable) </span>
-                    <a class="options-link rounded_area" href="#streaming-chat-options" title="Jump to dockable streaming chat link options."><span data-translate="options">options</span></a>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+                    <a class="options-link rounded_area" href="#streaming-chat-options" title="Jump to dockable streaming chat link options."><span data-translate="options">[options]</span></a>
+					
                 </h2>
                 <div id="dock" data-raw="" class="streaming_chat"></div>
+				
             </div>
 
             <a href="" id="streaming-chat-options"></a>
@@ -1000,6 +1120,13 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="messages-drop-down-reversed-order">🔃 Messages drop down (reversed order) </span>
                                 </div>
+								<div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="reverse" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="messages-reverse-order">🔀 Reverse order (top down new messages)</span>
+                                </div>
                                 <div>
                                     <label class="switch">
                                         <input type="checkbox" data-param1="random" />
@@ -1053,81 +1180,13 @@ input:checked + .slider:before {
                                     <input type="text" id="custombeep" class="textInput instant" autocomplete="off" placeholder="eg: https://www.yourdomain.com/beep.wav" data-textparam1="custombeep" />
                                     <label for="custombeep"><span data-translate="custombeep">&gt; URL for custom beep audio file</span></label>
                                 </div>
-                                <div title="Tip: You can use &amp;myname=name1,name2 to list names to exclude from TTS.">
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="speech" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="text-to-speech-incoming-messages">🗣️ Text-to-speech incoming messages </span>
-                                </div>
-                                <div>
-                                    <select id="languageSelect1" data-optionparam1="lang" title="Select the default text to speech language"> </select>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="simpletts" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="do-not-say-says-or-someone-says-with-tts">🗣️ Do not say "says" or "someone says" with TTS </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="readevents" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="read-tts-stream-events">🗣️ Include any stream events when using TTS </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="simpletts2" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="do-not-read-out-chatname-and-someone-says-when-using-tts">🗣️ Do not read out chatname and "someone says" when using TTS. </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="readouturls" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="read-out-urls">🗣️ Read out URLs rather than saying "link". </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="skipmessages=3" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="if-using-tts-only-announce-every-3rd-message">🗣️ If using TTS, only announce every 3rd message </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="rate" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="custom-tts-rate">
-                                        ⏩ Custom speaking rate for the TTS
-                                        <input type="number" style="max-width: 6ch;" step="0.01" max="10" min="0.1" value="1.0" size="5" data-numbersetting="rate" />
-                                    </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="queue=queue" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="clear-current-tts-queue-on">🔇 Clear current TTS queue on "</span><b><span data-translate="pass">!pass</span></b>"
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param1="passtts" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="pass-tts">🔇 Next tts message control via chat"</span><b><span data-translate="pass">!pass</span></b>"
-                                </div>
+                                
                                 <div>
                                     <label class="switch">
                                         <input type="checkbox" data-param1="reload" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="reload-the-last-50-messages-when-refreshing-the-page">🔄️ Reload the last ~50-messages when refreshing the page </span>
+                                    <span data-translate="reload-the-last-50-messages-when-refreshing-the-page">🔄️ Reload the last ~50-messages when refreshing the page </span>									
                                 </div>
                                 <div>
                                     <label class="switch">
@@ -1152,6 +1211,13 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="Exclude filtered from auto-show">🥅 Exclude filtered messages from auto-selecting </span>
                                 </div>
+								 <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="stripdonations" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="strip-donation-data-from-messages">🏷️🗑️ Remove donation data from messages </span>
+                                </div>
                                 <div>
                                     <label class="switch">
                                         <input type="checkbox" data-param1="autoshowdonos" />
@@ -1171,9 +1237,8 @@ input:checked + .slider:before {
                                         <input type="checkbox" data-param1="autoyoutubememberchat" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="auto-feature-monthly-member-chat">👑<img src="./sources/images/youtube.png" class="icon" /> Auto-feature YouTube monthly member chat </span>
+                                    <span data-translate="auto-feature-monthly-member-chat">👑<img src="./sources/images/youtube.png" class="icon" /> Auto-feature YouTube monthly member chat </span>																														  
                                 </div>
-
                                 <div>
                                     <label class="switch">
                                         <input type="checkbox" data-param1="sync" />
@@ -1207,7 +1272,7 @@ input:checked + .slider:before {
                                         <input type="checkbox" data-param1="helpermode" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="view-pin-and-queue-cant-chat-or-feature">👁️ View, Pin, and Queue. (Can't chat or feature) </span>
+                                    <span data-translate="view-pin-and-queue-cant-chat-or-feature">👁️ View, Pin, and Queue. (Can't chat or feature) </span> 
                                 </div>
                                 <div>
                                     <label class="switch">
@@ -1227,6 +1292,143 @@ input:checked + .slider:before {
                                     <input type="text" id="selfqueue" class="textInput instant" autocomplete="off" placeholder="eg: !lookie" data-textparam1="selfqueue" />
                                     <label for="selfqueue"><span data-translate="selfqueue">&gt; Chat command to auto-queue the message</span></label>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+			
+			<div class="wrapper">
+                <div class="collapsible">
+                    <input type="checkbox" class="collapsible-input" id="wrapper-chat-message-tts-options" />
+                    <label class="collapsible-label" for="wrapper-chat-message-tts-options"><span data-translate="message---tts">💬 Message — 🗣️ Text to Speech</span></label>
+                    <div class="collapsible-text">
+                        <div class="options">
+                            <div class="options_group streaming_chat">
+
+                                <div title="Tip: You can use &amp;myname=name1,name2 to list names to exclude from TTS.">
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="speech" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="text-to-speech-incoming-messages">🚦🗣️ Text-to-speech incoming messages </span>
+                                </div>
+								<br />
+								<i>note: the free built-in TTS plays out via the default audio device.</i>
+								<br />
+								<br />
+                                <div>
+                                    <select id="languageSelect1" data-optionparam1="lang" title="Select the default text to speech language"> </select>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="simpletts" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="do-not-say-says-or-someone-says-with-tts">🗣️ Do not say "says" or "someone says" with TTS </span>
+                                </div>
+
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="readevents" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="read-tts-stream-events">🗣️ Include any stream events when using TTS </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="simpletts2" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="do-not-read-out-chatname-and-someone-says-when-using-tts">🗣️ Do not read out chatname and "someone says" when using TTS. </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="readouturls" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="read-out-urls">🗣️ Read out URLs rather than saying "link". </span>
+                                </div>
+								<div title="Only what is written AFTER the !say command is read out. It's read out regardless of whether tts is turned on elsewhere or not.">
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="ttscommand" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="ttscommand">🗣️ Any message containing !say will be read out </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="skipmessages=3" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="if-using-tts-only-announce-every-3rd-message">🗣️ If using TTS, only announce every 3rd message </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="rate" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="custom-tts-rate">
+                                        ⏩ Custom speaking rate for the TTS
+                                        <input type="number" style="max-width: 6ch;" step="0.01" max="10" min="0.1" value="1.0" size="5" data-numbersetting="rate" />
+                                    </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="passtts" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="pass-tts">🔇 Next tts message control via chat "</span><b><span data-translate="pass">!pass</span></b>"												 
+                                </div>
+								<br />
+								<!-- Google TTS Options -->
+								<div class="tts-provider-options">
+									<h4>Google TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="googleAPIKey" class="textInput instant" autocomplete="off" placeholder="Your Google API Key" data-textparam1="ttskey" />
+										<label for="googleAPIKey"><span data-translate="google-api-key">Google API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="googleVoiceName" class="textInput instant" autocomplete="off" placeholder="e.g., en-GB-Standard-A" data-textparam1="voicegoogle" />
+										<label for="googleVoiceName"><span data-translate="google-voice-name">Google Voice Name</span></label>
+									</div>
+								</div>
+								<br />
+								<!-- ElevenLabs TTS Options -->
+								<div class="tts-provider-options">
+									<h4>ElevenLabs TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="elevenLabsKey" class="textInput instant" autocomplete="off" placeholder="Your ElevenLabs API Key" data-textparam1="elevenlabskey" />
+										<label for="elevenLabsKey"><span data-translate="elevenlabs-api-key">ElevenLabs API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="elevenLabsVoiceID" class="textInput instant" autocomplete="off" placeholder="e.g., VR6AewLTigWG4xSOukaG" data-textparam1="voice11" />
+										<label for="elevenLabsVoiceID"><span data-translate="elevenlabs-voice-id">ElevenLabs Voice ID</span></label>
+									</div>
+									<div>
+										<label class="switch">
+											<input type="checkbox" data-param1="latency" />
+											<span class="slider round"></span>
+										</label>
+										<span data-translate="elevenlabs-latency">
+											🚀 ElevenLabs Latency Optimization
+											<input type="number" style="max-width: 6ch;" step="1" max="4" min="0" value="0" size="5" data-numbersetting="latency" />
+										</span>
+									</div>
+								</div>
+								<br />
+								<!-- Speechify TTS Options -->
+								<div class="tts-provider-options">
+									<h4>Speechify TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="speechifyAPIKey" class="textInput instant" autocomplete="off" placeholder="Your Speechify API Key" data-textparam1="speechifykey" />
+										<label for="speechifyAPIKey"><span data-translate="speechify-api-key">Speechify API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="speechifyVoiceID" class="textInput instant" autocomplete="off" placeholder="e.g., henry" data-textparam1="voicespeechify" />
+										<label for="speechifyVoiceID"><span data-translate="speechify-voice-id">Speechify Voice ID</span></label>
+									</div>
+								</div>
                             </div>
                         </div>
                     </div>
@@ -1339,7 +1541,7 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="delete-names-entirely">🅰️ Delete names entirely </span>
                                 </div>
-                                <div>
+                                <div id="colorizename">
                                     <label class="switch">
                                         <input type="checkbox" data-param1="color" />
                                         <span class="slider round"></span>
@@ -1435,6 +1637,13 @@ input:checked + .slider:before {
                                         <span class="slider round"></span>
                                     </label>
                                     <span data-translate="strip-text-based-emojis-from-messages">😭 Strip text-based emojis from messages </span>
+                                </div>
+								<div title="Messages that are emoji-only based, without donation, membership, or content image, are ignored.">
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="noemojisonly" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="ignore-emoji-only-messages">😒⌨️ Ignore emoji-only messages </span>
                                 </div>
                                 <div title="Links are removed from messages and replaced with a placeholder">
                                     <label class="switch">
@@ -1589,6 +1798,21 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="horizontal-scrolling-messages"> ↔️ Horizontal scrolling messages </span>
                                 </div>
+								<div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="trim=200" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    ✂️ <span data-translate="trim-mesages-to-200">Trim messages to 200 characters... </span>
+                                </div>
+								<div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param1="trimname" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    ✂️ <span data-translate="trim-names-to-8">Trim names longer than</span>
+									<input type="number" style="max-width: 4ch;" max="99" min="1" value="8" size="3" data-numbersetting="trimname" />chars...
+                                </div>
                                 <div>
                                     <label class="switch">
                                         <input type="checkbox" data-param1="fixed" />
@@ -1596,13 +1820,19 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="messages-overlap-on-another">⤵️ Messages overlap on another </span>
                                 </div>
+								
+								<div class="textInputContainer" style="width: 95%;margin-top:10px;">
+									<textarea id="customCSS" class="textInput" rows="4" data-textparam1="cssb64" placeholder="Enter your custom CSS here"></textarea>
+									<label for="customCSS">&gt; Custom CSS</label>
+								</div>
+								
                                 <div>
                                     <span data-translate="font-family">
                                         Font Family
                                     </span>
                                     <select data-optionparam1="font">
-                                        <option value="Sora" style="font-family: 'Sora';"><span data-translate="Sora-abc123xyz">Sora - abc123XYZ</span></option>
-                                        <option value="opendyslexic" style="font-family: 'opendyslexic';"><span data-translate="open-dyslexic----abc123xyz">Open Dyslexic - abc123XYZ</span></option>
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
                                     </select>
                                 </div>
                                 <div class="textInputContainer" style="width: 95%;" title="Load a font family from Google Fonts">
@@ -1885,7 +2115,8 @@ input:checked + .slider:before {
             <div class="link" title="This link will only show selected messages, one at a time. Requires the dock to select messages.">
                 <h2 class="single_message_title">
                     <span data-translate="featured-chat-overlay">Featured chat overlay </span>
-                    <a class="options-link rounded_area" href="#single-message-options" title="Jump to single message overlay link options."><span data-translate="options">options</span></a>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+                    <a class="options-link rounded_area" href="#single-message-options" title="Jump to single message overlay link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <div id="overlay" data-raw="" class="single_message"></div>
             </div>
@@ -1903,7 +2134,14 @@ input:checked + .slider:before {
                                         <input type="checkbox" data-param2="scale=0.5" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="make-overlay-smaller">🔍 Make overlay smaller </span>
+                                    <span data-translate="make-overlay-smaller">🔍➖ Make overlay smaller </span>
+                                </div>
+								<div title="Zoom In on the overlay by 2x.">
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="scale=2" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="make-overlay-smaller">🔍➕ Make overlay larger </span>
                                 </div>
                                 <div>
                                     <label class="switch">
@@ -1958,64 +2196,12 @@ input:checked + .slider:before {
                                         ⌚ Queue + Show messages for at least <input type="number" style="max-width: 8ch;" max="999999" min="1" value="10000" size="6" data-numbersetting2="queuetime" />ms
                                     </span>
                                 </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="speech" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="enable-text-to-speech">🗣️ Enable text-to-speech </span>
-                                </div>
-                                <div>
-                                    <select id="languageSelect2" data-optionparam2="lang" title="Select the default text to speech language"> </select>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="ttsdonos" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="enable-text-to-speech-for-donations-only">🗣️💰 Enable text-to-speech for donations only </span>
-                                </div>
-								<div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="ttsnewmembers" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="enable-text-to-speech-for-new-members-only">🗣️🆕 Enable text-to-speech for new members only </span>
-                                </div>
-								<div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="ttsclicked" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="enable-text-to-speech-for-clicked-only">🗣️🖱️ Enable text-to-speech for clicked messages only </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="simpletts" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="do-not-say-says-or-someone-says-with-tts">🗣️ Do not say "says" or "someone says" with TTS </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="simpletts2" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="do-not-read-out-chatname-and-someone-says-when-using-tts">🗣️ Do not read out chatname and "someone says" when using TTS. </span>
-                                </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="readouturls" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="read-out-urls">🗣️ Read out URLs rather than saying "link". </span>
-                                </div>
                                 <div title="Note: You must first interact with the dock-page for any audio to be audible.">
                                     <label class="switch">
                                         <input type="checkbox" data-param2="beep" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="beep-when-there-is-a-new-message">🔔 Beep when there is a new message </span>
+                                    <span data-translate="beep-when-there-is-a-new-message">🔔 Beep when there is a new message </span>		
                                 </div>
                                 <div title="Lower the beep's volume by 50%">
                                     <label class="switch">
@@ -2024,20 +2210,10 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="reduce-the-beeps-volume">🔔🔉 Reduce the beep's volume to 30% </span>
                                 </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-param2="rate" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <span data-translate="custom-tts-rate">
-                                        ⏩ Custom speaking rate for the TTS
-                                        <input type="number" style="max-width: 6ch;" step="0.01" max="10" min="0.1" value="1.0" size="5" data-numbersetting2="rate" />
-                                    </span>
-                                </div>
 
                                 <div class="textInputContainer" style="width: 95%;" title="Specify a URL for a custom beep audio file">
                                     <input type="text" id="custombeep2" class="textInput instant" autocomplete="off" placeholder="eg: https://www.yourdomain.com/beep.wav" data-textparam2="custombeep" />
-                                    <label for="custombeep2"><span data-translate="custombeep">&gt; URL for custom beep audio file</span></label>
+                                    <label for="custombeep2"><span data-translate="custombeep">&gt; URL for custom beep audio file</span></label>												 
                                 </div>
                                 <div>
                                     <label class="switch">
@@ -2084,6 +2260,136 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="save-image-to-a-file">💾 Save avatar image to disk (click on page to setup) </span>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+			
+			 <div class="wrapper">
+                <div class="collapsible">
+                    <input type="checkbox" class="collapsible-input" id="wrapper-featured-tts-options" />
+                    <label class="collapsible-label" for="wrapper-featured-tts-options">🗣️ <span data-translate="text-to-speech">Text to Speech</span></label>
+                    <div class="collapsible-text">
+                        <div class="options">
+                            <div class="options_group single_message">
+
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="speech" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="enable-text-to-speech">🗣️ Enable text-to-speech </span>									  
+                                </div>
+								<br />
+								<i>note: the free built-in TTS plays out via the default audio device.</i>
+								<br />
+								<br />
+                                <div>
+                                    <select id="languageSelect2" data-optionparam2="lang" title="Select the default text to speech language"> </select>								 
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="ttsdonos" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="enable-text-to-speech-for-donations-only">🗣️💰 Enable text-to-speech for donations only </span>
+                                </div>
+								<div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="ttsnewmembers" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="enable-text-to-speech-for-new-members-only">🗣️🆕 Enable text-to-speech for new members only </span>
+                                </div>
+								<div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="ttsclicked" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="enable-text-to-speech-for-clicked-only">🗣️🖱️ Enable text-to-speech for clicked messages only </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="simpletts" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="do-not-say-says-or-someone-says-with-tts">🗣️ Do not say "says" or "someone says" with TTS </span> 
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="simpletts2" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="do-not-read-out-chatname-and-someone-says-when-using-tts">🗣️ Do not read out chatname and "someone says" when using TTS. </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="readouturls" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="read-out-urls">🗣️ Read out URLs rather than saying "link". </span>
+                                </div>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-param2="rate" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="custom-tts-rate">
+                                        ⏩ Custom speaking rate for the TTS
+                                        <input type="number" style="max-width: 6ch;" step="0.01" max="10" min="0.1" value="1.0" size="5" data-numbersetting2="rate" />
+                                    </span>
+                                </div>
+
+								<br />
+								<!-- Google TTS Options -->
+								<div class="tts-provider-options">
+									<h4>Google TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="googleAPIKey2" class="textInput instant" autocomplete="off" placeholder="Your Google API Key" data-textparam2="ttskey" />
+										<label for="googleAPIKey"><span data-translate="google-api-key">Google API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="googleVoiceName2" class="textInput instant" autocomplete="off" placeholder="e.g., en-GB-Standard-A" data-textparam2="voicegoogle" />
+										<label for="googleVoiceName"><span data-translate="google-voice-name">Google Voice Name</span></label>
+									</div>
+								</div>
+								<br />
+								<!-- ElevenLabs TTS Options -->
+								<div class="tts-provider-options">
+									<h4>ElevenLabs TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="elevenLabsKey2" class="textInput instant" autocomplete="off" placeholder="Your ElevenLabs API Key" data-textparam2="elevenlabskey" />
+										<label for="elevenLabsKey"><span data-translate="elevenlabs-api-key">ElevenLabs API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="elevenLabsVoiceID2" class="textInput instant" autocomplete="off" placeholder="e.g., VR6AewLTigWG4xSOukaG" data-textparam2="voice11" />
+										<label for="elevenLabsVoiceID"><span data-translate="elevenlabs-voice-id">ElevenLabs Voice ID</span></label>
+									</div>
+									<div>
+										<label class="switch">
+											<input type="checkbox" data-param2="latency" />
+											<span class="slider round"></span>
+										</label>
+										<span data-translate="elevenlabs-latency">
+											🚀 ElevenLabs Latency Optimization
+											<input type="number" style="max-width: 6ch;" step="1" max="4" min="0" value="0" size="5" data-numbersetting="latency" />
+										</span>
+									</div>
+								</div>
+								<br />
+								<!-- Speechify TTS Options -->
+								<div class="tts-provider-options">
+									<h4>Speechify TTS Options</h4>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="speechifyAPIKey2" class="textInput instant" autocomplete="off" placeholder="Your Speechify API Key" data-textparam2="speechifykey" />
+										<label for="speechifyAPIKey"><span data-translate="speechify-api-key">Speechify API Key</span></label>
+									</div>
+									<div class="textInputContainer" style="width: 95%;">
+										<input type="text" id="speechifyVoiceID2" class="textInput instant" autocomplete="off" placeholder="e.g., henry" data-textparam2="voicespeechify" />
+										<label for="speechifyVoiceID"><span data-translate="speechify-voice-id">Speechify Voice ID</span></label>
+									</div>
+								</div>
                             </div>
                         </div>
                     </div>
@@ -2243,14 +2549,19 @@ input:checked + .slider:before {
                                     <label for="name_background"><span data-translate="name-background-color">&gt; Name background color</span></label>
                                 </div>
 								<input type="color" data-color="name_background" id="name_background_pallette" class="colorPicker" style="display: inline-block; cursor: pointer; width: 27px; height: 27px; vertical-align: middle; padding: 0px; z-index: 99; background-color: rgba(0, 0, 0, 0);">
+								
+								<div class="textInputContainer" style="width: 95%;margin-top:10px;">
+									<textarea id="customCSS2" class="textInput" rows="4" data-textparam2="cssb64" placeholder="Enter your custom CSS here"></textarea>
+									<label for="customCSS2">&gt; Custom CSS</label>
+								</div>
 
                                 <div>
                                     <span data-translate="font-family">
                                         Font Family
                                     </span>
                                     <select data-optionparam2="font">
-                                        <option value="Sora" style="font-family: 'Sora';"><span data-translate="Sora-abc123xyz">Sora - abc123XYZ</span></option>
-                                        <option value="opendyslexic" style="font-family: 'opendyslexic';"><span data-translate="open-dyslexic----abc123xyz">Open Dyslexic - abc123XYZ</span></option>
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
                                     </select>
                                 </div>
 
@@ -2286,7 +2597,10 @@ input:checked + .slider:before {
 
             <div class="link" title="This link will only show the inbound emotes, bouncing them around the full page.">
                 <h2 class="emotes_wall_title">
-                    <span data-translate="emotes-wall">Emotes wall </span><a class="options-link rounded_area" href="#emote-wall-options" title="Jump to the emote wall link options."><span data-translate="options">options</span></a>
+					
+                    <span data-translate="emotes-wall">Emotes wall </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#emote-wall-options" title="Jump to the emote wall link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <div id="emoteswall" data-raw="" class="emotes_wall"></div>
             </div>
@@ -2380,7 +2694,10 @@ input:checked + .slider:before {
 
             <div class="link" title="This link shows a score for recent chat activity per chat source">
                 <h2 class="hype_mode_title">
-                    <span data-translate="hype-meter">Hype Meter </span><a class="options-link rounded_area" href="#hype-meter" title="Jump to the hype meter link options."><span data-translate="options">options</span></a>
+                    <span data-translate="hype-meter">Hype Meter </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#hype-meter" title="Jump to the hype meter link options."><span data-translate="options">[options]</span></a>
+					
                 </h2>
                 <h3>
                     <span data-translate="when-enabled-a-tally-score-of-unique-names-per-chat-source-is-tracked-stopstart-to-reset-the-tally">
@@ -2470,8 +2787,8 @@ input:checked + .slider:before {
                                         Font Family
                                     </span>
                                     <select data-optionparam4="font">
-                                        <option value="Sora" style="font-family: 'Sora';"><span data-translate="Sora-abc123xyz">Sora - abc123XYZ</span></option>
-                                        <option value="opendyslexic" style="font-family: 'opendyslexic';"><span data-translate="open-dyslexic----abc123xyz">Open Dyslexic - abc123XYZ</span></option>
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
                                     </select>
                                 </div>
                                 <div class="textInputContainer" style="width: 95%;" title="Load a font family from Google Fonts">
@@ -2486,7 +2803,9 @@ input:checked + .slider:before {
 
             <div class="link" title="This link shows a list of names representing users in a waiting list">
                 <h2 class="waitlist_mode_title">
-                    <span data-translate="wait-list">Wait List / Winner Draw</span><a class="options-link rounded_area" href="#waitlist" title="Jump to the waitlist link options."><span data-translate="options">options</span></a>
+                    <span data-translate="wait-list">Wait List / Winner Draw</span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#waitlist" title="Jump to the waitlist link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <h3>
                     <span data-translate="when-enabled-guests-can-type">When enabled, guests can type </span>
@@ -2654,8 +2973,8 @@ input:checked + .slider:before {
                                         Font Family
                                     </span>
                                     <select data-optionparam5="font">
-                                        <option value="Sora" style="font-family: 'Sora';"><span data-translate="Sora-abc123xyz">Sora - abc123XYZ</span></option>
-                                        <option value="opendyslexic" style="font-family: 'opendyslexic';"><span data-translate="open-dyslexic----abc123xyz">Open Dyslexic - abc123XYZ</span></option>
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
                                     </select>
                                 </div>
                                 <div class="textInputContainer" style="width: 95%;" title="Load a font family from Google Fonts">
@@ -2670,7 +2989,9 @@ input:checked + .slider:before {
 			
 			<div class="link" title="Polling system">
                 <h2 class="poll_mode_title">
-                    <span data-translate="pollmeter">Graphical Poll </span><a class="options-link rounded_area" href="#poll" title="Jump to the poll link options."><span data-translate="options">options</span></a>
+                    <span data-translate="pollmeter">Graphical Poll </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#poll" title="Jump to the poll link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <h3>
                     <span data-translate="when-enabled-a-poll">
@@ -2688,36 +3009,67 @@ input:checked + .slider:before {
 							<div class="options_group poll">
 								<h3>Poll Settings</h3>
 								<p>Enable and customize the poll:</p>
+								<br>
 								<div>
 									<label class="switch">
 										<input type="checkbox" data-target="poll" data-setting="pollEnabled" />
 										<span class="slider round"></span>
 									</label>
-									<span>Enable Poll</span>
+									<span>🚦 Enable Poll</span>
 								</div>
+								<br>
 								<div>
-									<label>Poll Type:</label>
+									<label>📊 Poll Type:</label>
 									<select data-optionsetting="pollType" data-target="poll" id="pollType">
 										<option value="freeform">Free-form</option>
 										<option value="yesno">Yes/No</option>
 										<option value="multiple">Multiple Choice</option>
 									</select>
 								</div>
+								<br>
 								<div>
-									<label>Poll Question:</label>
+									<label class="switch">
+										<input type="checkbox" data-target="poll" data-setting="pollSpam" />
+										<span class="slider round"></span>
+									</label>
+									<span>🗳️ Allow multiple votes per user</span>
+								</div>
+								<br>
+								<div>
+									<label>🎨 Poll Style/Theme:</label>
+									<select data-optionsetting="pollStyle" data-target="poll" id="pollStyle">
+										<option value="default">Default</option>
+										<option value="neon">Neon</option>
+										<option value="minimalist">Minimalist</option>
+										<option value="retro-gaming">Retro Gaming</option>
+										<option value="elegant">Elegant</option>
+										<option value="futuristic">Futuristic</option>
+										<option value="vintage">Vintage</option>
+										<option value="cyberpunk">Cyberpunk</option>
+									</select>
+								</div>
+								<br>
+								<div>
+									<label>❔ Poll Question:</label>
 									<input type="text" id="pollQuestion" class="textInput" autocomplete="off" placeholder="Enter poll question" data-textsetting="pollQuestion" data-target="poll" />
 								</div>
 								<div id="multipleChoiceOptions" class="hidden">
-									<label>Options (comma separated):</label>
+									<br>
+									<label>🔢 Options (comma separated):</label>
 									<input type="text" id="multipleChoiceInput" class="textInput" autocomplete="off" placeholder="Option 1, Option 2, ..." data-textsetting="multipleChoiceOptions" data-target="poll" />
 								</div>
-								<div class="hidden">
-									<label>Timer (seconds):</label>
-									<input type="number" id="pollTimer" class="textInput" autocomplete="off" placeholder="60" data-textsetting="pollTimer" data-target="poll" />
-								</div>
-								<div class="hidden">
-									<button class="glowingButton" data-action="startPoll" data-target="poll">Start Poll</button>
-									<button class="glowingButton" data-action="endPoll" data-target="poll">End Poll</button>
+								<span class="hidden">
+									<br>
+									<label class="switch">
+										<input type="checkbox" data-setting="pollTimerState" />
+										<span class="slider round"></span>
+									</label>
+									Timer (seconds): <input type="number" style="max-width: 5ch;" max="999999" min="1" value="60" size="4" data-numbersetting="pollTimer" />
+								</span>
+								<br>
+								<div>
+									<button class="glowingButton" data-action="closepoll" data-target="poll"><span>End Poll</span></button>
+									<button class="glowingButton" data-action="resetpoll" data-target="poll"><span>Reset Poll</span></button>
 								</div>
 							</div>
 						</div>
@@ -2726,7 +3078,9 @@ input:checked + .slider:before {
 			</div>
 			<div class="link" title="Battle Royal">
                 <h2 class="battle_mode_title">
-                    <span data-translate="pollmeter">Battle Royal </span><a class="options-link rounded_area" href="#battle" title="Jump to the battle royal link options."><span data-translate="options">options</span></a>
+                    <span data-translate="pollmeter">Battle Royal </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#battle" title="Jump to the battle royal link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <h3>
                     <span data-translate="when-enabled-a-battle">
@@ -2778,7 +3132,9 @@ input:checked + .slider:before {
 			
 			<div class="link" title="Customizable ticker banner bar">
                 <h2 class="ticker_mode_title">
-                    <span data-translate="tickermeter">Ticker </span><a class="options-link rounded_area" href="#ticker" title="Jump to the ticker link options."><span data-translate="options">options</span></a>
+                    <span data-translate="tickermeter">Ticker </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#ticker" title="Jump to the ticker link options."><span data-translate="options">[options]</span></a>
                 </h2>
                 <h3>
                     <span data-translate="when-enabled-a-ticker">
@@ -2814,8 +3170,8 @@ input:checked + .slider:before {
                                         Font Family
                                     </span>
                                     <select data-optionparam6="font">
-                                        <option value="Sora" style="font-family: 'Sora';"><span data-translate="Sora-abc123xyz">Sora - abc123XYZ</span></option>
-                                        <option value="opendyslexic" style="font-family: 'opendyslexic';"><span data-translate="open-dyslexic----abc123xyz">Open Dyslexic - abc123XYZ</span></option>
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
                                     </select>
                                 </div>
                                 <div class="textInputContainer" style="width: 95%;" title="Load a font family from Google Fonts">
@@ -2827,11 +3183,113 @@ input:checked + .slider:before {
                     </div>
                 </div>
             </div>
+			
+			<div class="link" title="Word cloud overlay">
+                <h2 class="wordcloud_mode_title">
+                    <span data-translate="wordcloudmeter">Word Cloud </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#wordcloud" title="Jump to the wordcloud link options."><span data-translate="options">[options]</span></a>
+                </h2>
+                <h3>
+                    <span data-translate="when-enabled-a-wordcloud">
+                       A wordcloud overlay. Chat messages that contain a single word are allowed.
+                    </span>
+                </h3>
+				<div id="wordcloud" data-raw="" class="streaming_chat"><a href="" id="wordcloudlink"></a></div>
+            </div>
+            <div class="wrapper">
+                <div class="collapsible">
+                    <input type="checkbox" class="collapsible-input" id="wrapper-wordcloud-general-options" />
+                    <label class="collapsible-label" for="wrapper-wordcloud-general-options"><span data-translate="enable-and-customize">📊 Enable and customize</span></label>
+                    <div class="collapsible-text">
+                        <div class="options">
+                            <div class="options_group wordcloud">
+                                <h3><span data-translate="must-enable-the-trigger-to-use">Must enable the trigger to use</span></h3>
+                                <div>
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="wordcloud" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="enable-the-wordcloud">🚦 Enable </span>
+                                </div>
+								
+                                <h3><span data-translate="other-customization-options">Other customization options</span></h3>
+                                <div>
+                                    <span data-translate="font-family">
+                                        Font Family
+                                    </span>
+                                    <select data-optionparam6="font">
+                                        <option value="Sora" style="font-family: 'Sora';">Sora - abc123XYZ</option>
+                                        <option value="opendyslexic" style="font-family: 'opendyslexic';">Open Dyslexic - abc123XYZ</option>
+                                    </select>
+                                </div>
+								<br>
+                                <div class="textInputContainer" style="width: 95%;" title="Load a font family from Google Fonts">
+                                    <input type="text" id="googlefont7" class="textInput instant" autocomplete="off" placeholder="eg: name1,name 2,Name3" data-textparam7="googlefont" />
+                                    <label for="googlefont7"><span data-translate="googlefont">&gt; a specify a Google Font name</span></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+			
+			<div class="link" title="Custom GIF Commands">
+				<h2 class="custom_gif_commands_title">
+					<span data-translate="custom-gif-commands">Custom GIF Commands </span>
+					<a class="copy-link rounded_area" title="Copy link to clipboard" data-copy="true"><span data-translate="copy">[copy link]</span></a>
+					<a class="options-link rounded_area" href="#custom-gif-commands" title="Jump to the custom GIF commands options."><span data-translate="options">[options]</span></a>
+				</h2>
+				<h3>
+					<span data-translate="when-enabled-custom-commands">
+						When enabled, custom commands will trigger specific GIFs or media in the overlay.
+					</span>
+				</h3>
+				<div id="custom-gif-commands" data-raw="" class="streaming_chat"><a href="" id="custom-gif-commands-link"></a></div>
+			</div>
+
+			<div class="wrapper">
+				<div class="collapsible">
+					<input type="checkbox" class="collapsible-input" id="wrapper-custom-gif-commands-options" />
+					<label class="collapsible-label" for="wrapper-custom-gif-commands-options"><span data-translate="enable-and-customize">📊 Enable and customize</span></label>
+					<div class="collapsible-text">
+						<div class="options">
+							<div class="options_group custom_gif_commands">
+								<h3><span data-translate="custom-gif-commands-settings">Custom GIF Commands Settings</span></h3>
+								<div>
+									<label class="switch">
+										<input type="checkbox" data-setting="enableCustomGifCommands" />
+										<span class="slider round"></span>
+									</label>
+									<span data-translate="enable-custom-gif-commands">🚦 Enable Custom GIF Commands</span>
+								</div>
+								
+								<div>
+									<label class="switch" title="Loop clips continuously or show images until at least minimum playout time is reached. Default is sub-second.">
+										<input type="checkbox" data-param9="showtime" />
+										<span class="slider round"></span>
+									</label>
+									<span data-translate="minimum-playout-time">
+										⏲️ Minimum default playout time <input type="number" style="max-width: 8ch;" max="999999" min="1" value="3000" size="6" data-numbersetting9="showtime" />ms
+									</span>
+								</div>
+								
+								<div id="customGifCommandsList"></div>
+								
+								<button class="glowingButton" id="addCustomGifCommand" style="margin-top: 10px; width: 200px;">
+									<span data-translate="add-new-command">+ Add New Command</span>
+								</button>
+							</div>
+							
+						</div>
+					</div>
+				</div>
+			</div>
 
             <div class="generic_category_title">
                 <h2>
                     <span data-translate="global-settings-and-tools">Global settings and tools </span>
-                    <a class="options-link rounded_area" href="#global-settings-and-tools-options" title="Jump to the global settings and tools."><span data-translate="options">options</span></a>
+                    <a class="options-link rounded_area" href="#global-settings-and-tools-options" title="Jump to the global settings and tools."><span data-translate="options">[options]</span></a>
                 </h2>
                 <div id="globalsettings" class="global_settings"></div>
             </div>
@@ -3017,6 +3475,13 @@ input:checked + .slider:before {
                                     </label>
                                     <img class="icon" src="./sources/images/twitch.png" style="display: inline-block;" />🔇 <span data-translate="auto-mute-twitch-ads"> Automatically mute Twitch video ads</span>
                                 </div>
+								 <div title="Trigger an inbound message starting when there is an ad starting/stopping">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="twichadannounce" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <img class="icon" src="./sources/images/twitch.png" style="display: inline-block;" />🅰️ <span data-translate="twichadannounce"> Announce when an ad plays/stops in Twitch</span>
+                                </div>
                                 <div title="If you enable this, it will work even if the extension itself is set to inactive">
                                     <label class="switch">
                                         <input type="checkbox" data-setting="detweet" />
@@ -3063,7 +3528,7 @@ input:checked + .slider:before {
                                         <input type="checkbox" data-setting="disableDB" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <span data-translate="disable-store-messages-in-local-database"> 🚫🗄️ Disable the local message database </span>
+                                    <span data-translate="disable-store-messages-in-local-database"> 🚫🗄️ Disable the <a href="./chathistory.html" style="color:lightblue" target="blank">local message database</a> </span>
                                 </div>
                                 <div>
                                     <label class="switch">
@@ -3075,12 +3540,20 @@ input:checked + .slider:before {
                                         <label for="filterevents"><span data-translate="hide-specific-events">&gt; Hide specific events</span></label>
                                     </div>
                                 </div>
+								<div title="Remove links when sending messages to Tiktok from SocialStreamNinja">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="notiktoklinks" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <img class="icon" src="./sources/images/tiktok.png" style="display: inline-block;" />🚫🔗
+                                    <span data-translate="no-tiktok-links"> Do not post links into TikTok's chat</span>
+                                </div>
                                 <div title="Don't block 'joined' stream events in TikTok">
                                     <label class="switch">
                                         <input type="checkbox" data-setting="capturejoinedevent" />
                                         <span class="slider round"></span>
                                     </label>
-                                    <img class="icon" src="./sources/images/tiktok.png" style="display: inline-block;" />
+                                    <img class="icon" src="./sources/images/tiktok.png" style="display: inline-block;" />🚪
                                     <span data-translate="capture-joined-events"> Don't block "joined" stream events (TikTok) </span>
                                 </div>
                                 <div title="Block donations/memberships from Youtube Shorts. Requires &shorts added to the Youtube chat pop out also.">
@@ -3099,6 +3572,14 @@ input:checked + .slider:before {
                                     <img class="icon" src="./sources/images/youtube.png" style="display: inline-block;" />
                                     <span data-translate="delay-youtube"> Delay Youtube to give mods/bots time to delete</span>
                                 </div>
+								<div title="Delay capturing messages from Kick to give time for messages to be deleted if needed; 3 extra seconds of delay">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="delaykick" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <img class="icon" src="./sources/images/kick.png" style="display: inline-block;" />
+                                    <span data-translate="delay-kick"> Delay Kick to give mods/bots time to delete</span>
+                                </div>
                                 <div title="Enable BTTV emotes - YT/TW channels + globals">
                                     <label class="switch">
                                         <input type="checkbox" data-setting="bttv" />
@@ -3113,7 +3594,14 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="add-7tv-to-chat"> 😱 Add 7TV emotes (global+) </span>
                                 </div>
-								 <div title="Enable Pronoun support - https://pr.alejo.io/">
+								<div title="Enable FFZ emotes - YT/TW channels + globals">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="ffz" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="add-ffz-to-chat"> 🌭 Add FFZ emotes (global+) </span>
+                                </div>
+								<div title="Enable Pronoun support - https://pr.alejo.io/">
                                     <label class="switch">
                                         <input type="checkbox" data-setting="pronouns" />
                                         <span class="slider round"></span>
@@ -3232,11 +3720,11 @@ input:checked + .slider:before {
                                         Select a different translation
                                     </span>
                                     <select data-optionsetting="translationlanguage">
-                                        <option value=""><span data-translate="default">Default</span></option>
-                                        <option value="de" title="German"><span data-translate="german">German</span></option>
-                                        <option value="es" title="Spanish"><span data-translate="spanish">Spanish</span></option>
-                                        <option value="en-us"><span data-translate="english---us">English - US</span></option>
-                                        <option value="test"><span data-translate="test-translations">Test Translations</span></option>
+                                        <option value="">Default</option>
+                                        <option value="de" title="German">German</option>
+                                        <option value="es" title="Spanish">Spanish</option>
+                                        <option value="en-us">English - US</option>
+                                        <option value="test">Test Translations</option>
                                     </select>
                                     <br />
                                     <small>
@@ -3403,14 +3891,21 @@ input:checked + .slider:before {
 
                                 <div id="chatCommands"></div>
                                 <br />
-
+								
                                 <h3><span data-translate="send-fixed-messages-at-intervals">Send fixed messages at intervals</span></h3>
-                                <span data-translate="specify-frequency-and-starting-offset-of-fixed-messages">
+                                
+								<span data-translate="specify-frequency-and-starting-offset-of-fixed-messages">
                                     Specify frequency and starting offset of fixed messages
                                 </span>
                                 <div id="timedMessages"></div>
                                 <br />
-
+								<div title="If less than 10 messages total have come in, skip the automated message interval">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="dynamictiming" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    🦗 <span data-translate="dynamic-timing">Skip auto-message if chat is too quiet</span>
+                                </div>
                                 <h3><span data-translate="custom-commands">Auto-responder</span></h3>
                                 <span data-translate="auto-responder">
                                     Auto-respond to custom chat commands
@@ -3454,6 +3949,14 @@ input:checked + .slider:before {
                                     <span data-translate="filter-out-duplicate-message-all">💬💬🚫 Filter out messages that echo / double</span>
                                 </div>
 								
+								<div title="Filter out third party relayed messages from capture; restream.io, beam, etc">
+                                    <label class="switch">
+                                        <input type="checkbox" id="ignorealternatives" data-setting="ignorealternatives" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="hide-alternative-sources">⏩🚫 Filter out 3rd-party relayed messages </span>
+                                </div>
+								
 								<h3><span data-translate="swear-words">Other filters</span></h3>
 								
                                 <div title="Censor common bad words with asterixis. Create badwords.txt to make your own blacklist.">
@@ -3462,6 +3965,9 @@ input:checked + .slider:before {
                                         <span class="slider round"></span>
                                     </label>
                                     <span data-translate="replace-common-swear-words-with-asterixis">🤬🚫 Replace common swear words with asterixis </span>
+									<button id="uploadBadwordsButton" class="glowingButton" style="width: 160px; margin-left: 0px;" title="Upload a custom list of bad words; text file only, one word per line."><span>⬆️ Upload Badwords</span></button>
+									<button id="deleteBadwordsButton" class="glowingButton" style="width: 160px; margin-left: 0px;" title="Delete any uploaded bad words list; the default list will be used instead."><span>⛔ Delete</span></button>
+									
                                 </div>
                                 <div title="Censor common bad words with asterixis in usernames">
                                     <label class="switch">
@@ -3525,17 +4031,7 @@ input:checked + .slider:before {
                                     </label>
                                     <span data-translate="strip-html-from-messages-and-donations">📤 Strip HTML/images from messages and donations </span>
                                 </div>
-                                <div>
-                                    <label class="switch">
-                                        <input type="checkbox" data-setting="blacklistuserstoggle" />
-                                        <span class="slider round"></span>
-                                    </label>
-                                    <div class="textInputContainer" style="display: inline-block; width: 250px;" title="Provide comma separated values; values that match a username will be rejected.">
-                                        <input type="text" id="blacklistusers" class="textInput" autocomplete="off" placeholder="Provide usernames, comma, separated" data-textsetting="blacklistusers" />
-                                        <label for="blacklistusers"><span data-translate="hide-and-block-specified-users">&gt; Hide and block specified users</span></label>
-                                    </div>
-                                </div>
-                                <div>
+								<div>
                                     <label class="switch">
                                         <input type="checkbox" data-setting="whitelistuserstoggle" />
                                         <span class="slider round"></span>
@@ -3545,6 +4041,27 @@ input:checked + .slider:before {
                                         <label for="whitelistusers"><span data-translate="only-allow-specified-users">&gt; Show only specified users</span></label>
                                     </div>
                                 </div>
+								<div>
+									<label class="switch">
+										<input type="checkbox" data-setting="blacklistuserstoggle" />
+										<span class="slider round"></span>
+									</label>
+									<span data-translate="hide-and-block-specified-users">🔮 Hide and block the following specified users:</span>
+									<div class="textInputContainer hidden" style="display: inline-block; width: 250px;" title="Provide comma separated values; values that match a username will be rejected.">
+                                        <input type="text" id="blacklistusers" class="textInput" autocomplete="off" placeholder="Provide usernames, comma, separated" data-textsetting="blacklistusers" />
+                                    </div>
+								</div>
+								<div>
+									<div class="username-list-container" id="usernameList"></div>
+									<div class="add-username-container">
+										<input type="text" id="newUsername" placeholder="Add username to block list">
+										<button id="addUsername">Add</button>
+										
+									</div>
+									
+									
+								</div>
+                                
                             </div>
                         </div>
                     </div>
@@ -3558,12 +4075,17 @@ input:checked + .slider:before {
                     <div class="collapsible-text">
                         <div class="options">
                             <div class="options_group">
-                                <div title="If a name lacks color data, randomly add one.">
+                                <div title="If a name lacks color data, randomly add one. This does not cause a name to be displayed as colorful though- you need to enable that option.">
                                     <label class="switch">
                                         <input type="checkbox" data-setting="randomcolor" />
                                         <span class="slider round"></span>
                                     </label>
                                     <span data-translate="add-a-random-color-to-uncolored-names">🌈👤 Add a random color to uncolored names </span>
+									<br>
+									<i>
+										<a class="options-link rounded_area" href="#colorizename" title="Jump to the color name option.">Note: This needs to be used in conjuction with <b>&color</b>
+										</a>
+									</i>
                                 </div>
 
                                 <div title="If a name lacks color data, randomly add one.">
@@ -3719,11 +4241,29 @@ input:checked + .slider:before {
 									</div>
 								</div>
 								<div title="There's a minimum of 5-seconds by default" style="margin:5px 0">
-									<span data-translate="custom-tts-rate">
+									<span data-translate="custom-ollama-rate">
 										🐢 Rate limit for responses per tab / source
 										<input type="number" style="max-width: 7ch;" step="1000" max="9999999" min="5000" value="5000" size="6" data-numbersetting="ollamaRateLimitPerTab" />ms
 									</span>
 								</div>
+								
+								<div style="display: inline-block;" title="Text to speech bot messages">
+									<label class="switch">
+										<input type="checkbox" id="ollamatts" data-setting="ollamatts" />
+										<span class="slider round"></span>
+									</label>
+									🗣️ <span data-translate="enable-ollamatts-bot">Enable TTS for the chat bot</span>
+									<i>This requires the bot overlay page to be opened. <a id="botlink" style="color:lightblue;" target="_blank">[BOT OVERLAY PAGE HERE]</a></i>
+								</div>
+								<br />
+								<div style="display: inline-block;" title="Do not relay bot messages">
+									<label class="switch">
+										<input type="checkbox" id="ollamaoverlayonly" data-setting="ollamaoverlayonly" />
+										<span class="slider round"></span>
+									</label>
+									🏹 <span data-translate="ollamaoverlayonly">Bot replies ONLY go to the bot overlay page</span>
+								</div>
+								<br /><br />
 								
 								<div class="textInputContainer" style="width: 95%;">
 									<textarea id="ollamaprompt" class="textInput" style="height:80px" autocomplete="off" placeholder="Enter additional instructions or context for the bot (e.g., 'You are a shopping assistant for a YouTube stream; only respond if you think it's important')" data-textsetting="ollamaprompt"></textarea>
@@ -3758,12 +4298,12 @@ input:checked + .slider:before {
 									<span data-translate="works-better-when"><i>💁‍ tip: The quality of data uploaded will impact results. Too much data may be harmful.</i></span> 
 								</div>
 								
-								<div style="display: inline-block;" title="Allow for private communication with the chat bot">
+								<div style="display:inline-block;" title="Allow for private communication with the chat bot">
 									<label class="switch">
 										<input type="checkbox" id="allowChatBot" data-setting="allowChatBot" />
 										<span class="slider round"></span>
 									</label>
-									🗣️ <span data-translate="enable-ollama-chat-bot-external">Enable private chat bot option</span>
+									💬 <span data-translate="enable-ollama-chat-bot-external">Enable private chat bot option</span> <a href="./chatbot.html" target="_blank" id="chatbotlink">[LINK TO CHATBOT]</a>
 								</div>
 							</div>
 						</div>
@@ -3834,17 +4374,6 @@ input:checked + .slider:before {
                                 <h3><span data-translate="opened-in-new-tab">Opened in new tab</span></h3>
 
                                 <div class="textInputContainer" style="width: 95%;">
-                                    <input type="text" id="twitch_username" class="textInput" autocomplete="off" placeholder="Channel name" data-textsetting="twitch_username" />
-                                    <label for="twitch_username"><span data-translate="twitch">&gt; Twitch</span></label>
-                                </div>
-                                <center>
-                                    <button class="glowingButton" style="margin-top: 4px; margin-left: 0px;" data-action="openchat" data-value="twitch">
-                                        <span><span data-translate="open-chat">Open chat</span></span>
-                                    </button>
-                                </center>
-                                <br />
-
-                                <div class="textInputContainer" style="width: 95%;">
                                     <input type="text" id="instagramlive_username" class="textInput" autocomplete="off" placeholder="Channel name" data-textsetting="instagramlive_username" />
                                     <label for="instagramlive_username"><span data-translate="instagram-live">&gt; Instagram Live</span></label>
                                 </div>
@@ -3896,6 +4425,16 @@ input:checked + .slider:before {
                                     <span style="color: #ff0000dd;">
                                         <b><span data-translate="note">Note</span></b><span data-translate="do">: Do </span><u><span data-translate="not">NOT</span></u><span data-translate="minimize-them"> minimize them!</span>
                                     </span>
+                                </center>
+								
+								<div class="textInputContainer" style="width: 95%;">
+                                    <input type="text" id="twitch_username" class="textInput" autocomplete="off" placeholder="Channel name" data-textsetting="twitch_username" />
+                                    <label for="twitch_username"><span data-translate="twitch">&gt; Twitch</span></label>
+                                </div>
+                                <center>
+                                    <button class="glowingButton" style="margin-top: 4px; margin-left: 0px;" data-action="openchat" data-value="twitch">
+                                        <span><span data-translate="open-chat">Open chat</span></span>
+                                    </button>
                                 </center>
 
                                 <div class="textInputContainer" style="width: 95%;">
@@ -4212,6 +4751,17 @@ input:checked + .slider:before {
                                     <label for="sessionpassword"><span data-translate="unique-session-password">&gt; Set or change your session password</span></label>
                                 </div>
                                 <i>It's okay to set a custom password.</i>
+								<br />
+                                <h3><span data-translate="hide-urls">Hide your links</span></h3>
+								
+                                <div title="Hide the links for each page so it can't be seen on stream.">
+                                    <label class="switch">
+                                        <input type="checkbox" data-setting="hideyourlinks" />
+                                        <span class="slider round"></span>
+                                    </label>
+                                    <span data-translate="hide-your-ssn-links">👁️🔗 Obscure your links in this menu </span>
+                                </div>
+								<i>Better safe than sorry.</i>
                             </div>
                         </div>
                     </div>

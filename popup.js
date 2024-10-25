@@ -1,5 +1,8 @@
+// popup.js
+
 var isExtensionOn = false;
 var ssapp = false;
+var usernames = [];
 
 function log(msg,a,b){
 	console.log(msg,a,b);
@@ -107,9 +110,46 @@ if (typeof(chrome.runtime)=='undefined'){
 		   } catch(e){}
 	   }
 	})
-	
-	
 }
+
+
+function copyToClipboard(event) {
+	console.log(event);
+   
+	if (event.target.parentNode.parentNode.querySelector("[data-raw] a[href]")){
+		navigator.clipboard.writeText(event.target.parentNode.querySelector("[data-raw] a[href]").href).then(function() {
+			console.log('Link copied to clipboard!');
+			event.target.classList.add("flashing");
+			setTimeout(()=>{
+				event.target.classList.remove("flashing");
+			},500);
+		}, function(err) {
+			console.error('Could not copy text: ', err);
+		});
+	} else if (event.target.parentNode.parentNode.parentNode.querySelector("[data-raw] a[href]")){
+		navigator.clipboard.writeText(event.target.parentNode.parentNode.parentNode.querySelector("[data-raw] a[href]").href).then(function() {
+			console.log('Link copied to clipboard!');
+			event.target.classList.add("flashing");
+			setTimeout(()=>{
+				event.target.classList.remove("flashing");
+			},500);
+		}, function(err) {
+			console.error('Could not copy text: ', err);
+		});
+	} else if (event.target.parentNode.parentNode.parentNode.parentNode.querySelector("[data-raw] a[href]")){
+		navigator.clipboard.writeText(event.target.parentNode.parentNode.parentNode.parentNode.querySelector("[data-raw] a[href]").href).then(function() {
+			console.log('Link copied to clipboard!');
+			event.target.classList.add("flashing");
+			setTimeout(()=>{
+				event.target.classList.remove("flashing");
+			},500);
+		}, function(err) {
+			console.error('Could not copy text: ', err);
+		});
+	}
+}
+
+
 
 var translation = {};
 
@@ -146,7 +186,7 @@ function miniTranslate(ele, ident = false, direct=false) {
 			}
 			return;
 		} else {
-			console.log(ident + ": not found in translation file");
+			log(ident + ": not found in translation file");
 			
 			if (!translation.miscellaneous || !(ident in translation.miscellaneous)){ 
 				var value = ident.replaceAll("-", " "); // lets use the key as the translation
@@ -338,10 +378,42 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 	document.getElementById("disableButton").onclick = function(event){
 		event.stopPropagation()
 		chrome.runtime.sendMessage({cmd: "setOnOffState", data: {value: !isExtensionOn}}, function (response) {
+			chrome.runtime.lastError;
 			update(response);
 		});
 		return false;
 	};
+	
+	document.getElementById('addCustomGifCommand').addEventListener('click', function() {
+		const commandsList = document.getElementById('customGifCommandsList');
+		const newCommandEntry = createCommandEntry();
+		commandsList.appendChild(newCommandEntry);
+		updateSettings(newCommandEntry, true);
+	});
+	
+	document.querySelectorAll("[data-copy]").forEach(ele=>{
+		ele.onclick = copyToClipboard;
+	});
+	
+	try {
+		document.getElementById('usernameList').addEventListener('click', (e) => {
+			if (e.target.classList.contains('remove-username')) {
+				removeUsername(e.target.dataset.username);
+			}
+		});
+
+		document.getElementById('addUsername').addEventListener('click', () => {
+			const newUsernameInput = document.getElementById('newUsername');
+			const newUsername = newUsernameInput.value.trim();
+			if (newUsername) {
+				addUsername(newUsername);
+				newUsernameInput.value = '';
+			}
+		});
+	} catch(e){
+		console.error(e);
+	}
+	
 	
 	populateFontDropdown();
 	
@@ -524,6 +596,15 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 		}
 	});
 	
+	const uploadBadwordsButton = document.getElementById('uploadBadwordsButton');
+	const deleteBadwordsButton = document.getElementById('deleteBadwordsButton');
+	if (uploadBadwordsButton) {
+		uploadBadwordsButton.addEventListener('click', uploadBadwordsFile);
+	}
+	if (deleteBadwordsButton) {
+		deleteBadwordsButton.addEventListener('click', deleteBadwordsFile);
+	}
+	
 	const ragEnabledCheckbox = document.getElementById('ollamaRagEnabled');
 	const ragFileManagement = document.getElementById('ragFileManagement');
 	const uploadButton = document.querySelector('[data-action="uploadRAGfile"]');
@@ -532,10 +613,20 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 		ragFileManagement.style.display = this.checked ? 'block' : 'none';
 	});
 
-	console.log("pop up asking main for settings");
+	log("pop up asking main for settings");
 	chrome.runtime.sendMessage({cmd: "getSettings"}, function (response) {
-		console.log("getSettings response",response);
-		update(response, false); // we dont want to sync things
+		chrome.runtime.lastError;
+		log("getSettings response",response);
+		if ((response == undefined) || (!response.streamID)){
+			log("WOO");
+			setTimeout(function(){
+				chrome.runtime.sendMessage({cmd: "getSettings"}, function (response) {
+					update(response, false);
+				});
+			},200);
+		} else {
+			update(response, false); // we dont want to sync things
+		}
 	});
 
 	
@@ -558,6 +649,7 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 		document.getElementById("chatCommands").appendChild(chat);
 	}
 	
+
 	for (var i=1;i<=10;i++){
 		var chat = document.createElement("div");
 		chat.innerHTML = '<label class="switch" style="vertical-align: top; margin: 26px 0 0 0">\
@@ -676,8 +768,9 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 					});
 				}
 			} else {
+				console.log(msg);
 				chrome.runtime.sendMessage(msg, function (response) { // actions have callbacks? maybe
-					console.log("ignore callback for this action");
+					log("ignore callback for this action");
 					// update(response);  
 				});
 			}
@@ -698,7 +791,7 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 			document.getElementById("ytcopy").innerHTML = "🔄";
 			try{
 				var videoID = data.split('{"videoId":"')[1].split('"')[0];
-				console.log(videoID);
+				log(videoID);
 				if (videoID){
 					navigator.clipboard.writeText(videoID).then(() => {
 						document.getElementById("ytcopy").innerHTML = "✔️"; // Video ID copied to clipboard
@@ -717,10 +810,20 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 
 	checkVersion();
 	
+	let hideLinks = false;
+	document.querySelectorAll("input[data-setting='hideyourlinks']").forEach(x=>{
+		if (x.checked){
+			hideLinks = true;
+		}
+	});
+	
+	if (hideLinks){
+		document.body.classList.add("hidelinks");
+	} 
 });
 var streamID = false;
 function update(response, sync=true){
-	console.log("update-> response: ",response);
+	log("update-> response: ",response);
 	if (response !== undefined){
 		
 		if (response.documents){
@@ -739,37 +842,61 @@ function update(response, sync=true){
 				baseURL = "file:///C:/Users/steve/Code/social_stream/";
 			}
 			
+			let hideLinks = false;
+			document.querySelectorAll("input[data-setting='hideyourlinks']").forEach(x=>{
+				if (x.checked){
+					hideLinks = true;
+				}
+			});
+			
+			if (hideLinks){
+				document.body.classList.add("hidelinks");
+			} else {
+				document.body.classList.remove("hidelinks");
+			}
+			
+			
 			document.getElementById("sessionid").value = response.streamID;
 			document.getElementById("sessionpassword").value = response.password || "";
 			
-			//document.getElementById("version").innerHTML = "Stream ID is : "+response.streamID;
+			document.getElementById("dock").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='docklink' href='"+baseURL+"dock.html?session="+response.streamID+password+"'>"+baseURL+"dock.html?session="+response.streamID+password+"</a>";
 			document.getElementById("dock").raw = baseURL+"dock.html?session="+response.streamID+password;
-			document.getElementById("dock").innerHTML = "<a target='_blank' id='docklink' href='"+baseURL+"dock.html?session="+response.streamID+password+"'>"+baseURL+"dock.html?session="+response.streamID+password+"</a>";
 
-			document.getElementById("overlay").innerHTML = "<a target='_blank' id='overlaylink' href='"+baseURL+"featured.html?session="+response.streamID+password+"'>"+baseURL+"featured.html?session="+response.streamID+password+"</a>";
+			document.getElementById("overlay").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='overlaylink' href='"+baseURL+"featured.html?session="+response.streamID+password+"'>"+baseURL+"featured.html?session="+response.streamID+password+"</a>";
 			document.getElementById("overlay").raw = baseURL+"featured.html?session="+response.streamID+password;
 
-			document.getElementById("emoteswall").innerHTML = "<a target='_blank' id='emoteswalllink' href='"+baseURL+"emotes.html?session="+response.streamID+password+"'>"+baseURL+"emotes.html?session="+response.streamID+password+"</a>";
+			document.getElementById("emoteswall").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='emoteswalllink' href='"+baseURL+"emotes.html?session="+response.streamID+password+"'>"+baseURL+"emotes.html?session="+response.streamID+password+"</a>";
 			document.getElementById("emoteswall").raw = baseURL+"emotes.html?session="+response.streamID+password;
 			
-			document.getElementById("hypemeter").innerHTML = "<a target='_blank' id='hypemeterlink' href='"+baseURL+"hype.html?session="+response.streamID+password+"'>"+baseURL+"hype.html?session="+response.streamID+password+"</a>";
+			document.getElementById("hypemeter").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='hypemeterlink' href='"+baseURL+"hype.html?session="+response.streamID+password+"'>"+baseURL+"hype.html?session="+response.streamID+password+"</a>";
 			document.getElementById("hypemeter").raw = baseURL+"hype.html?session="+response.streamID+password;
 			
-			document.getElementById("waitlist").innerHTML = "<a target='_blank' id='waitlistlink' href='"+baseURL+"waitlist.html?session="+response.streamID+password+"'>"+baseURL+"waitlist.html?session="+response.streamID+password+"</a>";
+			document.getElementById("waitlist").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='waitlistlink' href='"+baseURL+"waitlist.html?session="+response.streamID+password+"'>"+baseURL+"waitlist.html?session="+response.streamID+password+"</a>";
 			document.getElementById("waitlist").raw = baseURL+"waitlist.html?session="+response.streamID+password;
 			
-			document.getElementById("ticker").innerHTML = "<a target='_blank' id='tickerlink' href='"+baseURL+"ticker.html?session="+response.streamID+password+"'>"+baseURL+"ticker.html?session="+response.streamID+password+"</a>";
+			document.getElementById("ticker").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='tickerlink' href='"+baseURL+"ticker.html?session="+response.streamID+password+"'>"+baseURL+"ticker.html?session="+response.streamID+password+"</a>";
 			document.getElementById("ticker").raw = baseURL+"ticker.html?session="+response.streamID+password;
 			
-			document.getElementById("poll").innerHTML = "<a target='_blank' id='polllink' href='"+baseURL+"poll.html?session="+response.streamID+password+"'>"+baseURL+"poll.html?session="+response.streamID+password+"</a>";
+			document.getElementById("wordcloud").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='wordcloudlink' href='"+baseURL+"wordcloud.html?session="+response.streamID+password+"'>"+baseURL+"wordcloud.html?session="+response.streamID+password+"</a>";
+			document.getElementById("wordcloud").raw = baseURL+"wordcloud.html?session="+response.streamID+password;
+			
+			document.getElementById("poll").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='polllink' href='"+baseURL+"poll.html?session="+response.streamID+password+"'>"+baseURL+"poll.html?session="+response.streamID+password+"</a>";
 			document.getElementById("poll").raw = baseURL+"poll.html?session="+response.streamID+password;
 			
-			document.getElementById("battle").innerHTML = "<a target='_blank' id='battlelink' href='"+baseURL+"battle.html?session="+response.streamID+password+"'>"+baseURL+"battle.html?session="+response.streamID+password+"</a>";
+			document.getElementById("battle").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='battlelink' href='"+baseURL+"battle.html?session="+response.streamID+password+"'>"+baseURL+"battle.html?session="+response.streamID+password+"</a>";
 			document.getElementById("battle").raw = baseURL+"battle.html?session="+response.streamID+password;
 			
-
-			document.getElementById("remote_control_url").href = "https://socialstream.ninja/sampleapi.html?session="+response.streamID;
+			document.getElementById("chatbotlink").outerHTML = "<a target='_blank' style='color:lightblue;' id='chatbotlink' href='"+baseURL+"chatbot.html?session="+response.streamID+password+"'>[LINK TO CHAT BOT]</a>";
+			
+			document.getElementById("custom-gif-commands").innerHTML = hideLinks ? "Click to open link" : "<a target='_blank' id='custom-gif-commands-link' href='"+baseURL+"gif.html?session="+response.streamID+password+"'>"+baseURL+"gif.html?session="+response.streamID+password+"</a>";
+			document.getElementById("custom-gif-commands").raw = baseURL+"gif.html?session="+response.streamID+password;
+			
+			document.getElementById("remote_control_url").href = "https://socialstream.ninja/sampleapi.html?session="+response.streamID+password;
+			
+			document.getElementById("botlink").href = "https://socialstream.ninja/bot.html?session="+response.streamID+password;
+			
 		
+			hideLinks = false;
 			
 			if ('settings' in response){
 				for (var key in response.settings){
@@ -834,8 +961,8 @@ function update(response, sync=true){
 								} else if (key.includes("=")){
 									var keys = key.split('=');
 									ele = document.querySelector("input[data-param2='"+keys[0]+"']");
-									console.log(keys);
-									console.log(response.settings);
+									log(keys);
+									log(response.settings);
 									if (ele){
 										ele.checked = response.settings[key].param2;
 										if (keys[1]){
@@ -871,11 +998,59 @@ function update(response, sync=true){
 									updateSettings(ele, sync);
 								}
 							}
+							if ("param6" in response.settings[key]){
+								var ele = document.querySelector("input[data-param6='"+key+"']");
+								if (ele){
+									ele.checked = response.settings[key].param6;
+									updateSettings(ele, sync);
+								}
+							}
+							if ("param7" in response.settings[key]){
+								var ele = document.querySelector("input[data-param7='"+key+"']");
+								if (ele){
+									ele.checked = response.settings[key].param7;
+									updateSettings(ele, sync);
+								}
+							}
 							if ("param8" in response.settings[key]){
 								var ele = document.querySelector("input[data-param8='"+key+"']");
 								if (ele){
 									ele.checked = response.settings[key].param8;
 									updateSettings(ele, sync);
+								}
+							}
+							if ("param9" in response.settings[key]){
+								var ele = document.querySelector("input[data-param9='"+key+"']");
+								if (ele){
+									ele.checked = response.settings[key].param9;
+									if (!key.includes("=")){
+										if ("numbersetting9" in response.settings[key]){
+											updateSettings(ele, sync, parseFloat(response.settings[key].numbersetting9));
+										} else if (document.querySelector("input[data-numbersetting9='"+key+"']")){
+											updateSettings(ele, sync, parseFloat(document.querySelector("input[data-numbersetting9='"+key+"']").value));
+										} else {
+											updateSettings(ele, sync); 
+										}
+									} else {
+										updateSettings(ele, sync);
+									}
+								} else if (key.includes("=")){
+									var keys = key.split('=');
+									ele = document.querySelector("input[data-param9='"+keys[0]+"']");
+									log(keys);
+									log(response.settings);
+									if (ele){
+										ele.checked = response.settings[key].param9;
+										if (keys[1]){
+											var ele2 = document.querySelector("input[data-numbersetting9='"+keys[0]+"']");
+											if (ele2){
+												ele2.value = parseFloat(keys[1], keys[1]);
+											}
+											updateSettings(ele, sync, parseFloat(keys[1]));
+										} else{
+											updateSettings(ele, sync);
+										}
+									}
 								}
 							}
 							if ("both" in response.settings[key]){
@@ -901,9 +1076,13 @@ function update(response, sync=true){
 										}
 										chrome.runtime.sendMessage({cmd: "saveSetting", type: "setting", setting: "sentiment", "value": false}, function (response) {}); // delete sentiment
 									} catch(e){console.error(e);}
+								} else if (key == "hideyourlinks"){
+									document.body.classList.add("hidelinks");
+									hideLinks = true;
 								} else if (key == "ollamaRagEnabled"){
 									document.getElementById('ragFileManagement').style.display = 'block';
 								}
+								
 							}
 							if ("textsetting" in response.settings[key]){
 								var ele = document.querySelector("input[data-textsetting='"+key+"'],textarea[data-textsetting='"+key+"']");
@@ -914,12 +1093,19 @@ function update(response, sync=true){
 										try {
 											document.getElementById(ele.dataset.palette).value = ele.value;
 										} catch(e){
-											console.log(e);
+											log(e);
 										}
 									}
 									
 									updateSettings(ele, sync);
+									
+									if (key == "blacklistusers"){
+										log(ele.value);
+										usernames = ele.value.split(',').map(u => u.trim()).filter(u => u);
+										updateUsernameList();
+									}
 								}
+								
 							}
 							if ("optionsetting" in response.settings[key]){
 								var ele = document.querySelector("select[data-optionsetting='"+key+"']");
@@ -952,15 +1138,28 @@ function update(response, sync=true){
 									}
 								}
 							}
+							if ("numbersetting9" in response.settings[key]){
+								var ele = document.querySelector("input[data-numbersetting9='"+key+"']");
+								if (ele){
+									ele.value = response.settings[key].numbersetting9;
+									updateSettings(ele, sync);
+									
+									var ele = document.querySelector("input[data-param9='"+key+"']");
+									if (ele && ele.checked){
+										updateSettings(ele, false, parseFloat(response.settings[key].numbersetting9));
+									}
+								}
+							}
 							if ("textparam1" in response.settings[key]){
-								var ele = document.querySelector("input[data-textparam1='"+key+"']");
+								var ele = document.querySelector("input[data-textparam1='"+key+"'],textarea[data-textparam1='"+key+"']");
+								console.log(ele);
 								if (ele){
 									ele.value = response.settings[key].textparam1;
 									updateSettings(ele, sync);
 								}
 							}
 							if ("textparam2" in response.settings[key]){
-								var ele = document.querySelector("input[data-textparam2='"+key+"']");
+								var ele = document.querySelector("input[data-textparam2='"+key+"'],textarea[data-textparam2='"+key+"']");
 								if (ele){
 									ele.value = response.settings[key].textparam2;
 									updateSettings(ele, sync);
@@ -984,6 +1183,20 @@ function update(response, sync=true){
 								var ele = document.querySelector("input[data-textparam5='"+key+"']");
 								if (ele){
 									ele.value = response.settings[key].textparam5;
+									updateSettings(ele, sync);
+								}
+							}
+							if ("textparam6" in response.settings[key]){
+								var ele = document.querySelector("input[data-textparam6='"+key+"']");
+								if (ele){
+									ele.value = response.settings[key].textparam6;
+									updateSettings(ele, sync);
+								}
+							}
+							if ("textparam7" in response.settings[key]){
+								var ele = document.querySelector("input[data-textparam7='"+key+"']");
+								if (ele){
+									ele.value = response.settings[key].textparam7;
 									updateSettings(ele, sync);
 								}
 							}
@@ -1022,6 +1235,28 @@ function update(response, sync=true){
 									updateSettings(ele, sync);
 								}
 							}
+							if ("optionparam6" in response.settings[key]){
+								var ele = document.querySelector("select[data-optionparam6='"+key+"']");
+								if (ele){
+									ele.value = response.settings[key].optionparam6;
+									updateSettings(ele, sync);
+								}
+							}
+							if ("optionparam7" in response.settings[key]){
+								var ele = document.querySelector("select[data-optionparam7='"+key+"']");
+								if (ele){
+									ele.value = response.settings[key].optionparam7;
+									updateSettings(ele, sync);
+								}
+							}
+							if (('customGifCommands' in response.settings) && response.settings.customGifCommands.json) {
+								const commands = JSON.parse(response.settings.customGifCommands.json || '[]');
+								const commandsList = document.getElementById('customGifCommandsList');
+								commandsList.innerHTML = '';
+								commands.forEach(cmd => {
+									commandsList.appendChild(createCommandEntry(cmd.command, cmd.url));
+								});
+							}
 
 						} else { // obsolete method
 							var ele = document.querySelector("input[data-setting='"+key+"'], input[data-param1='"+key+"'], input[data-param2='"+key+"']");
@@ -1029,7 +1264,7 @@ function update(response, sync=true){
 								ele.checked = response.settings[key];
 								updateSettings(ele, sync);
 							}
-							var ele = document.querySelector("input[data-textsetting='"+key+"'], input[data-textparam1='"+key+"'], textarea[data-textsetting='"+key+"']");
+							var ele = document.querySelector("input[data-textsetting='"+key+"'], input[data-textparam1='"+key+"'], textarea[data-textsetting='"+key+"'], textarea[data-textparam1='"+key+"'],");
 							if (ele){
 								ele.value = response.settings[key];
 								updateSettings(ele, sync);
@@ -1044,12 +1279,54 @@ function update(response, sync=true){
 					miniTranslate(document.body);
 				}
 			}
+		
+			
+			if (hideLinks){
+				document.body.classList.add("hidelinks");
+			} else {
+				document.body.classList.remove("hidelinks");
+			}
+			
+			try {
+				document.getElementById("docklink").innerText = hideLinks ? "Click to open link" : document.getElementById("dock").raw;
+				document.getElementById("docklink").href = document.getElementById("dock").raw;
+
+				document.getElementById("overlaylink").innerText = hideLinks ? "Click to open link" : document.getElementById("overlay").raw;
+				document.getElementById("overlaylink").href = document.getElementById("overlay").raw;
+
+				document.getElementById("emoteswalllink").innerText = hideLinks ? "Click to open link" : document.getElementById("emoteswall").raw;
+				document.getElementById("emoteswalllink").href = document.getElementById("emoteswall").raw;
+				
+				document.getElementById("hypemeterlink").innerText = hideLinks ? "Click to open link" : document.getElementById("hypemeter").raw;
+				document.getElementById("hypemeterlink").href = document.getElementById("hypemeter").raw;
+				
+				document.getElementById("waitlistlink").innerText = hideLinks ? "Click to open link" : document.getElementById("waitlist").raw;
+				document.getElementById("waitlistlink").href = document.getElementById("waitlist").raw;
+				
+				document.getElementById("tickerlink").innerText = hideLinks ? "Click to open link" : document.getElementById("ticker").raw;
+				document.getElementById("tickerlink").href = document.getElementById("ticker").raw;
+				
+				document.getElementById("wordcloudlink").innerText = hideLinks ? "Click to open link" : document.getElementById("wordcloud").raw;
+				document.getElementById("wordcloudlink").href = document.getElementById("wordcloud").raw;
+				
+				document.getElementById("polllink").innerText = hideLinks ? "Click to open link" : document.getElementById("poll").raw;
+				document.getElementById("polllink").href = document.getElementById("poll").raw;
+				
+				document.getElementById("battlelink").innerText = hideLinks ? "Click to open link" : document.getElementById("battle").raw;
+				document.getElementById("battlelink").href = document.getElementById("battle").raw;
+				
+				document.getElementById("custom-gif-commands-link").innerText = hideLinks ? "Click to open link" : document.getElementById("custom-gif-commands").raw;
+				document.getElementById("custom-gif-commands-link").href = document.getElementById("custom-gif-commands").raw;
+			} catch(e){}
+		
 		}
 		
 		if (("state" in response) && streamID){
 			isExtensionOn = response.state;
 			if (isExtensionOn){
-				document.body.className = "extension-enabled";
+				document.body.classList.add("extension-enabled");
+				document.body.classList.remove("extension-disabled");
+				
 				if (ssapp){
 					document.getElementById("disableButtonText").innerHTML = "⚡ Service Active";
 				} else {
@@ -1064,7 +1341,9 @@ function update(response, sync=true){
 				} else {
 					document.getElementById("disableButtonText").innerHTML = "🔌 Extension Disabled";
 				}
-				document.body.className = "extension-disabled";
+				document.body.classList.remove("extension-enabled");
+				document.body.classList.add("extension-disabled");
+				
 				document.getElementById("disableButton").style.display = "";
 				chrome.browserAction.setIcon({path: "/icons/off.png"});
 				document.getElementById("extensionState").checked = null;
@@ -1197,6 +1476,17 @@ function updateSettings(ele, sync=true, value=null){
 		target = ele.dataset.target;
 	}
 	
+	if (ele.closest('.custom-gif-command-entry')) {
+        const commands = Array.from(document.querySelectorAll('.custom-gif-command-entry')).map(entry => ({
+            command: entry.querySelector('.custom-command').value,
+            url: entry.querySelector('.custom-media-url').value
+        }));
+
+        if (sync) {
+            chrome.runtime.sendMessage({cmd: "saveSetting", type: "json", setting: "customGifCommands", value: JSON.stringify(commands)}, function (response) {});
+        }
+    }
+	
 	if (ele.dataset.param1){
 		if (ele.checked){
 			
@@ -1284,7 +1574,9 @@ function updateSettings(ele, sync=true, value=null){
 		
 		document.getElementById("dock").raw = removeQueryParamWithValue(document.getElementById("dock").raw, ele.dataset.textparam1);
 		
-		if (ele.value){
+		if (ele.value && ele.dataset.textparam1 == "cssb64"){
+			document.getElementById("dock").raw = updateURL(ele.dataset.textparam1+"="+btoa(encodeURIComponent(ele.value)), document.getElementById("dock").raw);
+		} else if (ele.value){
 			document.getElementById("dock").raw = updateURL(ele.dataset.textparam1+"="+encodeURIComponent(ele.value), document.getElementById("dock").raw);
 		}
 		document.getElementById("dock").raw = document.getElementById("dock").raw.replace("&&", "&");
@@ -1295,7 +1587,9 @@ function updateSettings(ele, sync=true, value=null){
 	} else if (ele.dataset.textparam2){
 		document.getElementById("overlay").raw = removeQueryParamWithValue(document.getElementById("overlay").raw, ele.dataset.textparam2);
 		
-		if (ele.value){
+		if (ele.value && ele.dataset.textparam2 == "cssb64"){
+			document.getElementById("overlay").raw = updateURL(ele.dataset.textparam2+"="+btoa(encodeURIComponent(ele.value)), document.getElementById("overlay").raw);
+		} else if (ele.value){
 			document.getElementById("overlay").raw = updateURL(ele.dataset.textparam2+"="+encodeURIComponent(ele.value), document.getElementById("overlay").raw);
 		}
 		document.getElementById("overlay").raw = document.getElementById("overlay").raw.replace("&&", "&");
@@ -1314,6 +1608,13 @@ function updateSettings(ele, sync=true, value=null){
 		if (sync){
 			chrome.runtime.sendMessage({cmd: "saveSetting", type: "textparam3",  target:target, setting: ele.dataset.textparam3, "value": ele.value}, function (response) {});
 		}
+	} else if (ele.dataset.textparam4){
+		document.getElementById("hypemeter").raw = removeQueryParamWithValue(document.getElementById("hypemeter").raw, ele.dataset.textparam4);
+		
+		if (ele.value){
+			document.getElementById("hypemeter").raw = updateURL(ele.dataset.textparam4+"="+encodeURIComponent(ele.value), document.getElementById("hypemeter").raw);
+		}
+		document.getElementById("hypemeter").raw = document.getElementById("hypemeter").raw.replace("&&", "&");
 	} else if (ele.dataset.textparam4){
 		document.getElementById("hypemeter").raw = removeQueryParamWithValue(document.getElementById("hypemeter").raw, ele.dataset.textparam4);
 		
@@ -1347,73 +1648,51 @@ function updateSettings(ele, sync=true, value=null){
 		if (sync){
 			chrome.runtime.sendMessage({cmd: "saveSetting", type: "textparam6",  target:target, setting: ele.dataset.textparam6, "value": ele.value}, function (response) {});
 		}
+	} else if (ele.dataset.textparam7){
+		document.getElementById("wordcloud").raw = removeQueryParamWithValue(document.getElementById("wordcloud").raw, ele.dataset.textparam7);
+		
+		if (ele.value){
+			document.getElementById("wordcloud").raw = updateURL(ele.dataset.textparam7+"="+encodeURIComponent(ele.value), document.getElementById("wordcloud").raw);
+		}
+		document.getElementById("wordcloud").raw = document.getElementById("wordcloud").raw.replace("&&", "&");
+		document.getElementById("wordcloud").raw = document.getElementById("wordcloud").raw.replace("?&", "?");
+		if (sync){
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "textparam7",  target:target, setting: ele.dataset.textparam7, "value": ele.value}, function (response) {});
+		}
 	} else if (ele.dataset.optionparam1){
 		document.getElementById("dock").raw = removeQueryParamWithValue(document.getElementById("dock").raw, ele.dataset.optionparam1);
 		
+		
 		if (ele.value){
-			if (ele.value.includes("&voice=")){
-				document.getElementById("dock").raw = removeQueryParamWithValue(document.getElementById("dock").raw, "voice");
-				document.getElementById("dock").raw = updateURL(ele.dataset.optionparam1+"="+ele.value, document.getElementById("dock").raw);
-			} else {
-				document.getElementById("dock").raw = updateURL(ele.dataset.optionparam1+"="+encodeURIComponent(ele.value), document.getElementById("dock").raw);
-			}
+			ele.value.split("&").forEach(rem=>{
+				if (rem.includes("=")){ // this isn't covering all cases, but good enough for the existing values
+					document.getElementById("dock").raw = removeQueryParamWithValue(document.getElementById("dock").raw, rem.split("=")[0]);
+				}
+			});
+			document.getElementById("dock").raw = updateURL(ele.dataset.optionparam1+"="+encodeURIComponent(ele.value).replace(/%26/g, '&').replace(/%3D/g, '='), document.getElementById("dock").raw);
 		}
+		
 		document.getElementById("dock").raw = document.getElementById("dock").raw.replace("&&", "&");
 		document.getElementById("dock").raw = document.getElementById("dock").raw.replace("?&", "?");
 		if (sync){
-			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam1",  target:target, setting: ele.dataset.optionparam1, "value": ele.value}, function (response) {});
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam1", target:target,  setting: ele.dataset.optionparam1, "value": ele.value}, function (response) {});
 		}
 	} else if (ele.dataset.optionparam2){
 		document.getElementById("overlay").raw = removeQueryParamWithValue(document.getElementById("overlay").raw, ele.dataset.optionparam2);
 		
 		if (ele.value){
-			if (ele.value.includes("&voice=")){
-				document.getElementById("overlay").raw = removeQueryParamWithValue(document.getElementById("overlay").raw, "voice");
-				document.getElementById("overlay").raw = updateURL(ele.dataset.optionparam2+"="+ele.value, document.getElementById("overlay").raw);
-			} else {
-				document.getElementById("overlay").raw = updateURL(ele.dataset.optionparam2+"="+encodeURIComponent(ele.value), document.getElementById("overlay").raw);
-			}
+			ele.value.split("&").forEach(rem=>{
+				if (rem.includes("=")){
+					document.getElementById("overlay").raw = removeQueryParamWithValue(document.getElementById("overlay").raw, rem.split("=")[0]);
+				}
+			});
+			document.getElementById("overlay").raw = updateURL(ele.dataset.optionparam2+"="+encodeURIComponent(ele.value).replace(/%26/g, '&').replace(/%3D/g, '='), document.getElementById("overlay").raw);
 		}
+		
 		document.getElementById("overlay").raw = document.getElementById("overlay").raw.replace("&&", "&");
 		document.getElementById("overlay").raw = document.getElementById("overlay").raw.replace("?&", "?");
 		if (sync){
-			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam2",  target:target, setting: ele.dataset.optionparam2, "value": ele.value}, function (response) {});
-		}
-	///
-	} else if (ele.dataset.optionparam3){
-		document.getElementById("emoteswall").raw = removeQueryParamWithValue(document.getElementById("emoteswall").raw, ele.dataset.optionparam3);
-		
-		if (ele.value){
-			document.getElementById("emoteswall").raw = updateURL(ele.dataset.optionparam3+"="+encodeURIComponent(ele.value), document.getElementById("emoteswall").raw);
-		}
-		document.getElementById("emoteswall").raw = document.getElementById("emoteswall").raw.replace("&&", "&");
-		document.getElementById("emoteswall").raw = document.getElementById("emoteswall").raw.replace("?&", "?");
-		if (sync){
-			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam3",  target:target, setting: ele.dataset.optionparam3, "value": ele.value}, function (response) {});
-		}
-	} else if (ele.dataset.optionparam4){
-		document.getElementById("hypemeter").raw = removeQueryParamWithValue(document.getElementById("hypemeter").raw, ele.dataset.optionparam4);
-		
-		if (ele.value){
-			document.getElementById("hypemeter").raw = updateURL(ele.dataset.optionparam4+"="+encodeURIComponent(ele.value), document.getElementById("hypemeter").raw);
-		}
-		
-		document.getElementById("hypemeter").raw = document.getElementById("hypemeter").raw.replace("&&", "&");
-		document.getElementById("hypemeter").raw = document.getElementById("hypemeter").raw.replace("?&", "?");
-		if (sync){
-			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam4",  target:target, setting: ele.dataset.optionparam4, "value": ele.value}, function (response) {});
-		}
-	} else if (ele.dataset.optionparam5){
-		document.getElementById("waitlist").raw = removeQueryParamWithValue(document.getElementById("waitlist").raw, ele.dataset.optionparam5);
-		
-		if (ele.value){
-			document.getElementById("waitlist").raw = updateURL(ele.dataset.optionparam5+"="+encodeURIComponent(ele.value), document.getElementById("waitlist").raw);
-		}
-		
-		document.getElementById("waitlist").raw = document.getElementById("waitlist").raw.replace("&&", "&");
-		document.getElementById("waitlist").raw = document.getElementById("waitlist").raw.replace("?&", "?");
-		if (sync){
-			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam5",  target:target, setting: ele.dataset.optionparam5, "value": ele.value}, function (response) {});
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam2", target:target,  setting: ele.dataset.optionparam2, "value": ele.value}, function (response) {});
 		}
 	} else if (ele.dataset.optionparam6){
 		document.getElementById("ticker").raw = removeQueryParamWithValue(document.getElementById("ticker").raw, ele.dataset.optionparam6);
@@ -1426,6 +1705,18 @@ function updateSettings(ele, sync=true, value=null){
 		document.getElementById("ticker").raw = document.getElementById("ticker").raw.replace("?&", "?");
 		if (sync){
 			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam6", target:target,  setting: ele.dataset.optionparam6, "value": ele.value}, function (response) {});
+		}
+	} else if (ele.dataset.optionparam7){
+		document.getElementById("wordcloud").raw = removeQueryParamWithValue(document.getElementById("wordcloud").raw, ele.dataset.optionparam7);
+		
+		if (ele.value){
+			document.getElementById("wordcloud").raw = updateURL(ele.dataset.optionparam7+"="+encodeURIComponent(ele.value), document.getElementById("wordcloud").raw);
+		}
+		
+		document.getElementById("wordcloud").raw = document.getElementById("wordcloud").raw.replace("&&", "&");
+		document.getElementById("wordcloud").raw = document.getElementById("wordcloud").raw.replace("?&", "?");
+		if (sync){
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "optionparam7", target:target,  setting: ele.dataset.optionparam7, "value": ele.value}, function (response) {});
 		}
 	} else if (ele.dataset.param2){
 		if (ele.checked){
@@ -1510,6 +1801,34 @@ function updateSettings(ele, sync=true, value=null){
 		}
 		
 		document.querySelectorAll("input[data-param8^='"+ele.dataset.param8.split("=")[0]+"']:not([data-param8='"+ele.dataset.param8+"'])").forEach(ele1=>{
+			if (ele1 && ele1.checked){
+				ele1.checked = false;
+				updateSettings(ele1, sync);
+			}
+		});
+	} else if (ele.dataset.param9){
+		if (ele.checked){
+			if (value!==null){
+				document.getElementById("custom-gif-commands").raw = updateURL(ele.dataset.param9+"="+value, document.getElementById("custom-gif-commands").raw);
+			} else if (document.querySelector("input[data-numbersetting9='"+ele.dataset.param9+"']")){
+				value = document.querySelector("input[data-numbersetting9='"+ele.dataset.param9+"']").value;
+				
+				document.getElementById("custom-gif-commands").raw = removeQueryParamWithValue(document.getElementById("custom-gif-commands").raw, ele.dataset.param9);
+				document.getElementById("custom-gif-commands").raw = updateURL(ele.dataset.param9+"="+value, document.getElementById("custom-gif-commands").raw);
+			} else {
+				document.getElementById("custom-gif-commands").raw = updateURL(ele.dataset.param9, document.getElementById("custom-gif-commands").raw);
+			}
+		}  else {
+			document.getElementById("custom-gif-commands").raw = removeQueryParamWithValue(document.getElementById("custom-gif-commands").raw, ele.dataset.param9);
+		}
+			
+		document.getElementById("custom-gif-commands").raw = document.getElementById("custom-gif-commands").raw.replace("&&", "&");
+		document.getElementById("custom-gif-commands").raw = document.getElementById("custom-gif-commands").raw.replace("?&", "?");
+		if (sync){
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "param9",  target:target, setting: ele.dataset.param9, "value": ele.checked}, function (response) {});
+		}
+		
+		document.querySelectorAll("input[data-param9^='"+ele.dataset.param9.split("=")[0]+"']:not([data-param9='"+ele.dataset.param9+"'])").forEach(ele1=>{
 			if (ele1 && ele1.checked){
 				ele1.checked = false;
 				updateSettings(ele1, sync);
@@ -1614,6 +1933,14 @@ function updateSettings(ele, sync=true, value=null){
 			}
 		}
 		
+		if (ele.dataset.setting == "hideyourlinks"){
+			if (ele.checked){
+				refreshLinks();
+			} else {
+				refreshLinks();
+			}
+		}
+		
 		if (sync){
 			chrome.runtime.sendMessage({cmd: "saveSetting",  type: "setting",  target:target, setting: ele.dataset.setting, "value": ele.checked}, function (response) {});
 		}
@@ -1662,7 +1989,18 @@ function updateSettings(ele, sync=true, value=null){
 		} else {
 			return;
 		}
-			
+	} else if (ele.dataset.numbersetting9){ 
+		
+		if (sync){
+			chrome.runtime.sendMessage({cmd: "saveSetting", type: "numbersetting9",  target:target, setting: ele.dataset.numbersetting9, "value": ele.value}, function (response) {});
+		}
+		
+		if (document.querySelector("input[data-param9='"+ele.dataset.numbersetting9+"']") && document.querySelector("input[data-param9='"+ele.dataset.numbersetting9+"']").checked){
+			document.getElementById("custom-gif-commands").raw = removeQueryParamWithValue(document.getElementById("custom-gif-commands").raw,ele.dataset.numbersetting9);
+			document.getElementById("custom-gif-commands").raw = updateURL(ele.dataset.numbersetting9+"="+ ele.value, document.getElementById("custom-gif-commands").raw);
+		} else {
+			return;
+		}		
 	} else if (ele.dataset.special){
 		
 		if (ele.dataset.special==="session"){
@@ -1671,7 +2009,7 @@ function updateSettings(ele, sync=true, value=null){
 					streamID: ele.value
 				});
 			}
-			chrome.runtime.sendMessage({cmd: "sidUpdated",  target:target, streamID: ele.value}, function (response) {console.log("streamID updated");});
+			chrome.runtime.sendMessage({cmd: "sidUpdated",  target:target, streamID: ele.value}, function (response) {log("streamID updated");});
 			
 		} else if (ele.dataset.special==="password"){
 			if (chrome && chrome.storage && chrome.storage.sync && chrome.storage.sync.set){
@@ -1679,7 +2017,7 @@ function updateSettings(ele, sync=true, value=null){
 					password: ele.value
 				});
 			}
-			chrome.runtime.sendMessage({cmd: "sidUpdated",  target:target, password: ele.value || ""}, function (response) {console.log("Password updated");});
+			chrome.runtime.sendMessage({cmd: "sidUpdated",  target:target, password: ele.value || ""}, function (response) {log("Password updated");});
 		}
 	} else if (ele.dataset.color){
 		
@@ -1690,37 +2028,66 @@ function updateSettings(ele, sync=true, value=null){
 			return;
 		}
 		
+	} 
+	
+	refreshLinks();
+}
+
+function refreshLinks(){
+	
+	let hideLinks = false;
+	document.querySelectorAll("input[data-setting='hideyourlinks']").forEach(x=>{
+		if (x.checked){
+			hideLinks = true;
+		}
+	});
+	
+	if (hideLinks){
+		document.body.classList.add("hidelinks");
+	} else {
+		document.body.classList.remove("hidelinks");
 	}
-	
+	try {
+		document.getElementById("docklink").innerText = hideLinks ? "Click to open link" : document.getElementById("dock").raw;
+		document.getElementById("docklink").href = document.getElementById("dock").raw;
 
-	document.getElementById("docklink").innerText = document.getElementById("dock").raw;
-	document.getElementById("docklink").href = document.getElementById("dock").raw;
+		document.getElementById("overlaylink").innerText = hideLinks ? "Click to open link" : document.getElementById("overlay").raw;
+		document.getElementById("overlaylink").href = document.getElementById("overlay").raw;
 
-	document.getElementById("overlaylink").innerText = document.getElementById("overlay").raw;
-	document.getElementById("overlaylink").href = document.getElementById("overlay").raw;
-
-	document.getElementById("emoteswalllink").innerText = document.getElementById("emoteswall").raw;
-	document.getElementById("emoteswalllink").href = document.getElementById("emoteswall").raw;
-	
-	document.getElementById("hypemeterlink").innerText = document.getElementById("hypemeter").raw;
-	document.getElementById("hypemeterlink").href = document.getElementById("hypemeter").raw;
-	
-	document.getElementById("waitlistlink").innerText = document.getElementById("waitlist").raw;
-	document.getElementById("waitlistlink").href = document.getElementById("waitlist").raw;
-	
-	document.getElementById("tickerlink").innerText = document.getElementById("ticker").raw;
-	document.getElementById("tickerlink").href = document.getElementById("ticker").raw;
-	
-	document.getElementById("polllink").innerText = document.getElementById("poll").raw;
-	document.getElementById("polllink").href = document.getElementById("poll").raw;
-	
-	document.getElementById("battlelink").innerText = document.getElementById("battle").raw;
-	document.getElementById("battlelink").href = document.getElementById("battle").raw;
+		document.getElementById("emoteswalllink").innerText = hideLinks ? "Click to open link" : document.getElementById("emoteswall").raw;
+		document.getElementById("emoteswalllink").href = document.getElementById("emoteswall").raw;
+		
+		document.getElementById("hypemeterlink").innerText = hideLinks ? "Click to open link" : document.getElementById("hypemeter").raw;
+		document.getElementById("hypemeterlink").href = document.getElementById("hypemeter").raw;
+		
+		document.getElementById("waitlistlink").innerText = hideLinks ? "Click to open link" : document.getElementById("waitlist").raw;
+		document.getElementById("waitlistlink").href = document.getElementById("waitlist").raw;
+		
+		document.getElementById("tickerlink").innerText = hideLinks ? "Click to open link" : document.getElementById("ticker").raw;
+		document.getElementById("tickerlink").href = document.getElementById("ticker").raw;
+		
+		document.getElementById("wordcloudlink").innerText = hideLinks ? "Click to open link" : document.getElementById("wordcloud").raw;
+		document.getElementById("wordcloudlink").href = document.getElementById("wordcloud").raw;
+		
+		document.getElementById("polllink").innerText = hideLinks ? "Click to open link" : document.getElementById("poll").raw;
+		document.getElementById("polllink").href = document.getElementById("poll").raw;
+		
+		document.getElementById("battlelink").innerText = hideLinks ? "Click to open link" : document.getElementById("battle").raw;
+		document.getElementById("battlelink").href = document.getElementById("battle").raw;
+		
+		document.getElementById("custom-gif-commands-link").innerText = hideLinks ? "Click to open link" : document.getElementById("custom-gif-commands").raw;
+		document.getElementById("custom-gif-commands-link").href = document.getElementById("custom-gif-commands").raw;
+	} catch(e){}
 }
 
 if (!chrome.browserAction){
 	chrome.browserAction = {};
-	chrome.browserAction.setIcon = function (icon) {};
+	
+	if (chrome.action && chrome.action.setIcon){
+		chrome.browserAction.setIcon = chrome.action.setIcon
+	} else {
+		chrome.browserAction.setIcon = function (icon) {};
+	}
 	
 	function sendMessageToBackground(message, timeout = 15000) {
 	  return new Promise((resolve, reject) => {
@@ -1740,7 +2107,7 @@ if (!chrome.browserAction){
 	}
 
 	sendMessageToBackground({cmd: "getSettings"}, 20000).then(response => {
-		console.log("Received response:", response);
+		log("Received response:", response);
 		update(response, false);
 	  })
 	  .catch(error => {
@@ -1780,9 +2147,9 @@ function updateDocumentList(documents = []) {
 try {
 	chrome.runtime.onMessage.addListener(
 		function(request, sender, sendResponse) {
-			console.log("INCOMING MESSAGE--------------------------");
+			log("INCOMING MESSAGE--------------------------");
 			if (request.forPopup) {
-				console.log("Message received in popup:", request.forPopup);
+				log("Message received in popup:", request.forPopup);
 				if (request.forPopup.documents){
 					updateDocumentList(request.forPopup.documents);
 				}
@@ -1796,13 +2163,121 @@ try {
 		}
 	);
 } catch(e){
-	console.log(e);
+	log(e);
 }
 
 
+function updateUsernameList(save=false) {
+	const usernameList = document.getElementById('usernameList');
+	usernameList.innerHTML = '';
+	usernames.forEach(username => {
+		const item = document.createElement('div');
+		item.className = 'username-item';
+		item.innerHTML = `
+			<span class="remove-username" data-username="${username}" title="Remove user from block-list">×</span>
+			<span>${username}</span>
+		`;
+		usernameList.appendChild(item);
+	});
+	var ele = document.querySelector("input[data-textsetting='blacklistusers'],textarea[data-textsetting='blacklistusers']");
+	if (ele){
+		ele.value = usernames.join(',');
+		log(ele.value);
+		
+		if (save){
+			updateSettings(ele);
+		}
+	}
+}
 
+function addUsername(username) {
+	if (username && !usernames.includes(username)) {
+		usernames.push(username);
+		updateUsernameList(true);
+	}
+}
 
+function removeUsername(username) {
+	usernames = usernames.filter(u => u !== username);
+	updateUsernameList(true);
+}
 
+function createCommandEntry(command = '', url = '') {
+    function encodeHTML(str) {
+        return str.replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#039;');
+    }
 
+    const entry = document.createElement('div');
+    entry.className = 'custom-gif-command-entry';
+    entry.innerHTML = `
+        <div class="textInputContainer" style="width: 90%;">
+            <input type="text" class="textInput custom-command" value="${encodeHTML(command)}" autocomplete="off" placeholder="!command" data-textsetting="customGifCommand" />
+            <label><span data-translate="chat-command">&gt; Chat Command</span></label>
+        </div>
+        <div class="textInputContainer" style="width: 90%;">
+            <input type="text" class="textInput custom-media-url" value="${encodeHTML(url)}" autocomplete="off" placeholder="https://media.giphy.com/media/..." data-textsetting="customGifUrl" />
+            <label><span data-translate="media-url">&gt; Media URL (GIF, image, or video)</span></label>
+        </div>
+        <button class="removeCustomGifCommand" style="width: auto; min-width: 60px; padding: 0 5px;">
+            <span data-translate="remove">Remove</span>
+        </button>
+    `;
+    
+    entry.querySelector('.removeCustomGifCommand').addEventListener('click', function() {
+        entry.remove();
+        updateSettings(entry, true);
+    });
+    
+    entry.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', function() {
+            updateSettings(this, true);
+        });
+    });
+    
+    return entry;
+}
 
+//bad words upload code
+/// Add these functions to handle file upload and deletion
+function uploadBadwordsFile() {
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.txt';
+  fileInput.onchange = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const contents = e.target.result;
+		console.log({cmd: 'uploadBadwords', data: contents});
+        chrome.runtime.sendMessage({cmd: 'uploadBadwords', data: contents}, (response) => {
+		  console.log(response);
+          if (response.success) {
+            alert('Badwords file uploaded successfully.');
+          } else {
+            alert('Failed to upload badwords file.');
+          }
+        });
+      };
+      reader.readAsText(file);
+    }
+  };
+  fileInput.click();
+}
+
+function deleteBadwordsFile() {
+  if (confirm('Are you sure you want to delete the custom badwords file?')) {
+    chrome.runtime.sendMessage({cmd: 'deleteBadwords'}, (response) => {
+      if (response.success) {
+        alert('Badwords file deleted successfully.');
+      } else {
+        alert('Failed to delete badwords file.');
+      }
+    });
+  }
+}
 

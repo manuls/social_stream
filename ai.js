@@ -12,35 +12,6 @@ let lunrIndexPromise;
 const maxContextSize = 31000;
 const maxContextSizeFull = 32000;
 
-function getFirstAvailableModel() {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-		
-		let ollamaendpoint = "http://localhost:11434";
-		if (settings.ollamaendpoint && settings.ollamaendpoint.textsetting){
-			ollamaendpoint = settings.ollamaendpoint.textsetting;
-		}
-		
-        xhr.open('GET', ollamaendpoint+'/api/tags', true);
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                const datar = JSON.parse(xhr.responseText);
-                if (datar && datar.models && datar.models.length > 0) {
-                    resolve(datar.models[0].name);
-                } else {
-                    reject(new Error('No models available'));
-                }
-            } else {
-                reject(new Error('Failed to fetch models'));
-            }
-        };
-        xhr.onerror = function() {
-            reject(new Error('Network error while fetching models'));
-        };
-        xhr.send();
-    });
-}
-
 async function rebuildIndex() {
     const db = await openDatabase();
     const transaction = db.transaction(DOCUMENT_STORE_NAME, 'readonly');
@@ -80,145 +51,426 @@ async function rebuildIndex() {
     globalLunrIndex = initLunrIndex(documents);
 }
 
-async function callOllamaAPI(prompt, model = null, callback = null) {
-    const ollamaendpoint = settings.ollamaendpoint?.textsetting || "http://localhost:11434";
-    let ollamamodel = model || settings.ollamamodel?.textsetting || "llama3.1:latest";
+async function getFirstAvailableModel() {
+    let ollamaendpoint = settings.ollamaendpoint?.textsetting || "http://localhost:11434";
     
+    if (typeof ipcRenderer !== 'undefined') {
+        // Electron environment
+        return new Promise( async (resolve, reject) =>  {
+			let ccc = setTimeout(()=>{
+				reject(new Error('Request timed out'));
+			},10000);
+			let xhr;
+			try {
+				xhr = await fetchNode(`${ollamaendpoint}/api/tags`);
+			} catch(e){
+				clearTimeout(ccc);
+				reject(new Error('General fetch error'));
+				return;
+			}
+			
+		    const datar = JSON.parse(xhr.data);
+			if (datar && datar.models && datar.models.length > 0) {
+				resolve(datar.models[0].name);
+				return;
+			} else {
+				reject(new Error('No models available'));
+				return;
+			}
+        });
+		
+    } else {
+        // Web environment
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `${ollamaendpoint}/api/tags`, true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    const datar = JSON.parse(xhr.responseText);
+                    if (datar && datar.models && datar.models.length > 0) {
+                        resolve(datar.models[0].name);
+                    } else {
+                        reject(new Error('No models available'));
+                    }
+                } else {
+                    reject(new Error('Failed to fetch models'));
+                }
+            };
+            xhr.timeout = 10000; // 10 seconds timeout
+            xhr.ontimeout = function() {
+                reject(new Error('Request timed out'));
+            };
+            xhr.onerror = function() {
+                reject(new Error('Network error while fetching models'));
+            };
+            xhr.send();
+        });
+    }
+}
+
+
+const streamingPostNode = async function (URL, body, headers = {}, onChunk = null, signal = null) {
+	if (ipcRenderer){
+		return new Promise((resolve, reject) => {
+			const channelId = `stream-${Date.now()}-${Math.random()}`;
+			
+			let fullResponse = '';
+			
+			const cleanup = () => {
+				ipcRenderer.removeAllListeners(channelId);
+				ipcRenderer.send(`${channelId}-close`);
+			};
+			
+			ipcRenderer.on(channelId, (event, chunk) => {
+				if (chunk === null) {
+					// Stream ended
+					cleanup();
+					resolve(fullResponse);
+				} else {
+					fullResponse += chunk;
+					if (onChunk) onChunk(chunk);
+				}
+			});
+			
+			ipcRenderer.send("streaming-nodepost", {
+				channelId,
+				url: URL,
+				body: body,
+				headers: headers
+			});
+			
+			if (signal) {
+				signal.addEventListener('abort', () => {
+					cleanup();
+					ipcRenderer.send(`${channelId}-abort`);
+					reject(new DOMException('Aborted', 'AbortError'));
+				});
+			}
+		});
+	}
+};
+
+const activeChatBotSessions = {};
+let tmpModelFallback = "";
+async function callOllamaAPI(prompt, model = null, callback = null, abortController = null, UUID = null, images=null) {
+    let ollamaendpoint = settings.ollamaendpoint?.textsetting || "http://localhost:11434";
+    let ollamamodel = model || settings.ollamamodel?.textsetting || tmpModelFallback || "llama3.2:latest";
+
     async function makeRequest(currentModel) {
         const isStreaming = callback !== null;
-        
+        let fullResponse = '';
+        let responseComplete = false;
+
         try {
-            if (postNode) {
-                let body = {
-                    model: currentModel,
-                    prompt: prompt,
-                    stream: isStreaming
-                };
-                
-                if (isStreaming) {
-                    // Implement streaming for postNode (you may need to adjust this based on postNode's capabilities)
-                    return await new Promise((resolve, reject) => {
-                        let fullResponse = '';
-                        postNode(`${ollamaendpoint}/api/generate`, body, 
-                            { "Content-Type": 'application/json' },
-                            (chunk) => {
-                                try {
-                                    const data = JSON.parse(chunk);
-                                    if (data.response) {
-                                        fullResponse += data.response;
-                                        callback(data.response);
-                                    }
-                                    if (data.done) {
-                                        resolve(fullResponse);
-                                    }
-                                } catch (e) {
-                                    console.error("Error parsing chunk:", e);
-                                }
-                            }
-                        ).catch(reject);
-                    });
-                } else {
-                    let data = await postNode(`${ollamaendpoint}/api/generate`, body, { "Content-Type": 'application/json' });
-                    try {
-                        data = JSON.parse(data);
-                    } catch(e) {
-                        console.log(data);
-                    }
-                    if (data && data.response) {
-                        return data.response;
-                    } else {
-                        throw new Error("Failed to call Ollama API..");
-                    }
+            if (UUID) {
+                if (activeChatBotSessions[UUID]) {
+                    activeChatBotSessions[UUID].abort();
                 }
-            } else {
-                if (isStreaming) {
-                    const response = await fetch(`${ollamaendpoint}/api/generate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            model: currentModel,
-                            prompt: prompt,
-                            stream: true
-                        }),
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                if (!abortController) {
+                    abortController = new AbortController();
+                }
+                activeChatBotSessions[UUID] = abortController;
+            }
+
+            let response;
+            if (typeof ipcRenderer !== 'undefined') {
+                // Electron environment
+				
+				if (isStreaming) {
+					response = await new Promise((resolve, reject) => {
+						const channelId = `streaming-nodepost-${Date.now()}`;
+						
+						ipcRenderer.on(channelId, (event, chunk) => {
+							if (chunk === null) {
+								responseComplete = true;
+								resolve({ ok: true });
+							} else if (typeof chunk === 'object' && chunk.error) {
+								// This is the error response
+								resolve(chunk);
+							} else {
+								handleChunk(chunk, callback, (resp) => { fullResponse += resp; });
+							}
+						});
+						
+						const message = {
+								model: currentModel,
+								prompt: prompt,
+								stream: true
+							};
+						
+						if (images){
+							message.images = images;
+						}
+
+						ipcRenderer.send('streaming-nodepost', {
+							channelId,
+							url: `${ollamaendpoint}/api/generate`,
+							body: message,
+							headers: { 'Content-Type': 'application/json' }
+						});
+
+						abortController.signal.addEventListener('abort', () => {
+							ipcRenderer.send(`${channelId}-abort`);
+						});
+					});
+
+					if (response.error) {
+						return response;
+					}
+				} else {
+					
+					const message = {
+						model: currentModel,
+						prompt: prompt,
+						stream: false
+					};
+					
+					if (images){
+						message.images = images;
+					}
+					
+					response = fetchNode(`${ollamaendpoint}/api/generate`, {
+                        'Content-Type': 'application/json',
+                    }, 'POST', message);
+
+					// console.log(response);
+					
+                    if (response.status === 404) {
+                        return { error: 404, message: `Model ${currentModel} not found` };
+                    } else if (response.status !== 200) {
+                        return { error: response.status, message: `HTTP error! status: ${response.status}` };
                     }
-                    
+
+                    try {
+                        const data = JSON.parse(response.data);
+                        fullResponse = data.response;
+                        responseComplete = true;
+                    } catch (e) {
+                        console.error("Error parsing JSON:", e);
+                        return { error: true, message: "Error parsing response" };
+                    }
+				}
+            } else {
+                // Web environment
+				
+				const message = {
+					model: currentModel,
+					prompt: prompt,
+					stream: isStreaming
+				};
+				
+				if (images){
+					message.images = images;
+				}
+				
+				//console.log(message);
+				
+                response = await fetch(`${ollamaendpoint}/api/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(message),
+                    signal: abortController ? abortController.signal : undefined,
+                });
+				
+				//console.log(response);
+
+				if (!response.ok) {
+					if (response.status === 404) {
+						return { error: 404,  message: `Model ${currentModel} not found` };
+					} else if (response.status){
+						return { error: response.status, message: `HTTP error! status: ${response.status}` };
+					}
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+
+                if (isStreaming) {
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder();
-                    let fullResponse = '';
-                    
+
                     while (true) {
                         const { done, value } = await reader.read();
-                        if (done) break;
-                        
-                        const chunk = decoder.decode(value);
-                        const lines = chunk.split('\n');
-                        for (const line of lines) {
-                            if (line.trim() !== '') {
-                                try {
-                                    const data = JSON.parse(line);
-                                    if (data.response) {
-                                        fullResponse += data.response;
-                                        callback(data.response);
-                                    }
-                                } catch (e) {
-                                    console.error("Error parsing line:", e);
-                                }
-                            }
+						//console.log(done,value);
+                        if (done) {
+                            responseComplete = true;
+                            break;
                         }
+                        const chunk = decoder.decode(value);
+						//console.log(chunk);
+                        handleChunk(chunk, callback, (resp) => { fullResponse += resp; });
                     }
-                    
-                    return fullResponse;
                 } else {
-                    const response = await fetch(`${ollamaendpoint}/api/generate`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            model: currentModel,
-                            prompt: prompt,
-                            stream: false
-                        }),
-                    });
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
                     const data = await response.json();
-                    return data.response;
+                    fullResponse = data.response;
+                    responseComplete = true;
                 }
             }
+			
+			return { success: true, response: fullResponse, complete: responseComplete };
         } catch (error) {
-            console.error(`Error in callOllamaAPI with model ${currentModel}:`, error);
-            throw error;
+            if (error.name === 'AbortError') {
+                return { aborted: true, response: fullResponse };
+            } else {
+                console.warn(`Error in callOllamaAPI with model ${currentModel}:`, error);
+                return { error: true, message: error.message };
+            }
+        } finally {
+            if (UUID && activeChatBotSessions[UUID] === abortController) {
+                delete activeChatBotSessions[UUID];
+            }
         }
     }
-    
-    try {
-        return await makeRequest(ollamamodel);
-    } catch (error) {
+
+   function handleChunk(chunk, callback, appendToFull) {
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+            if (line.trim() !== '') {
+                try {
+                    // Attempt to parse the JSON
+                    const data = JSON.parse(line);
+                    if (data.response) {
+                        appendToFull(data.response);
+                        if (callback) callback(data.response);
+                    }
+                    if (data.done) {
+                        responseComplete = true;
+						break;
+                    }
+                } catch (e) {
+                    // If parsing fails, log the error and the problematic line
+                    
+                    // Attempt to extract any text content from the line
+                    const match = line.match(/"response":"(.*?)"/);
+                    if (match && match[1]) {
+                        const extractedResponse = match[1];
+                        appendToFull(extractedResponse);
+                        if (callback) callback(extractedResponse);
+                    }
+                }
+            }
+        }
+    }
+
+
+    const result = await makeRequest(ollamamodel);
+    if (result.aborted) {
+        return result.response + "💥";
+    } else if (result.error && result.error === 404) {
         console.warn(`Failed to use model ${ollamamodel}. Attempting to get first available model.`);
         try {
             const availableModel = await getFirstAvailableModel();
-            console.log(`Attempting with available model: ${availableModel}`);
-            return await makeRequest(availableModel);
+            if (availableModel) {
+                tmpModelFallback = availableModel;
+                setTimeout(() => {
+                    tmpModelFallback = ""; // allow for trying the original model again.
+                }, 60000);
+                const fallbackResult = await makeRequest(availableModel);
+                if (fallbackResult.aborted) {
+                    return fallbackResult.response + "💥";
+                } else if (fallbackResult.error) {
+                    throw new Error(fallbackResult.message);
+                }
+                return fallbackResult.complete ? fallbackResult.response : fallbackResult.response + "💥";
+            }
+            return;
         } catch (fallbackError) {
-            console.error("Error in callOllamaAPI even with fallback:", fallbackError);
-            throw new Error("Failed to call Ollama API with any available model: " + fallbackError.message);
+            console.warn("Error in callOllamaAPI even with fallback:", fallbackError);
+            throw fallbackError;
         }
+    } else if (result.error) {
+        return;
+    } else {
+        return result.complete ? result.response : result.response + "💥";
     }
 }
+
+// strip emotes
+// if longer than 32-character, check it with AI
+
+/* let badList = new Set(['🍆', '💩', '🖕', '👉👌', '🍑', '🤬', '🔞', 'fuck', 'sexy']);
+function containsBadContent(message) {
+  const words = message.toLowerCase().split(/\s+/);
+  return words.some(word => badList.has(word)) || 
+         Array.from(message).some(char => badList.has(char));
+} */
+
+let safePhrasesSet = new Set(["lmfao","uuh","lmao","lol","gg","ww","wow","caught","huh","ben","cap","ta","hi","oooo","rt","no","damn","lmaooo","lmfao 󠀀","what","ez","hah","yes","???","pffttt","omg","noway","lmaoooo","ewww","o7","saj","hiii","omegalul","ofc","..","lmfaooo","????","ew","ggs","herehego","ome44","xdd","??","lmfaoooo","lmaoo","capping","lmaoooooooooo","www","hello","gay","10","wwww","hii","lmaooooo","mhm","?????","wwwww","ok","kekw","lmfaooooo","lmfaoo","yo","ayy","pog","...","hahaha","bro","gigachad","cmb","nice","icant","do it","arky","oh","banger","hey","clap","??????","ww arky","dorkin","ja","holy","lmfaoooooo","???????","bye","klat","oh nah","1 of 1","zyzzbass","wwwwww","no way","ww 5","monka","lmaoooooo","aura","-10k","true","uuh 󠀀","hahahaha","o wow","bruh","mmmmm","nah","me","hmm","rip","mmmmmm","haha","nooo","life","lmfaooooooo","xd","piece","buh","5.5","classic","real voice","frenn","noooo","????????","ayo","same","󠀀","ra","guuh","ono","man of meat","aaaa","ewwww","yamfam","letsgo","derp","yeah","ego","eww","yep","wwwwwww","mmmmmmm","mmmm","cinema","yooo","gayge","uhh","cungus","piece blash","?????????","stfu","pa","ww method","piece lotus","oh no","wicked","exit","ginji","dtm","lmaooooooo","nt","meat7","ayaya","widespeedlaugh","uuh uuh","chip","cringe","hahahahaha",":)","back","mmmmmmmm","danse","ogre","hesright","w arky","fax","what a save","its real","necco","ff","here we go","poll is uppppp","a u r a","d:","yoooo","men","mmmmmmmmm","gachademon","mmmmmmmmmm","oof","wwwwwwww","wwwwwwwww","catjam","o nah","okay","fr","??????????","idiot","ww emp","hahahah","ome5","mogged","lets goooo","yesss","ewwwww","nooooo","om","mmmmmmmmmmm","looking","real","hiiii","go","brb","yoo","hesgay","lmfao lmfao","lmfaoooooooo","lets go","....","sign bob","stop","acha","ll","lmao 󠀀","man of crabs","lmaoooooooo","ome","cucked","lmfaooooooooo","lets gooo","crazy","kek","ww 󠀀","ddl","meow","orange","وعليكم السلام","dicktone","oooo 󠀀","lmfaoooooooooo","rockn","20","yea","good","tarky","tuuh","memegym","sus","woah","we good","hello everyone","tf","ww deshae","ww segment","11","hmmm","loool","whattt","hola","sold","ww ww","lmfaooooooooooo","w method","yup","hit","السلام عليكم","uhhh","wwwwwwwwwww","nahhh","ta ta","ww unc","lacy","ot","lmaooooooooo","herehego 󠀀","predify","ww max","100","nope","based","goat","noooooo","press 1","stand","ww cap","dam","shiza","glaze","idk","???????????","smh","sakina","hiiiii","yay","سلام","na","xa","f a t","w 5","oh wow","bds","thanks","facts","uhoh","how","finally","byee","refresh","????????????","sped","sheesh","stare","exactly","damnnn","nahhhh","yess","wwwwwwwwww","ww 50","hah hah","sweater","why","who","thats crazy","hahah","lelw","oh shit","w raid","listening","team","caught 󠀀","cool","uh oh","ooo","w tim","whattttt","oh my","kishan","ww red","ayoo","mmm","no one said that","deji","400k","thank you","insane","bro what","what?","nahh","omggg","و عليكم السلام","vamos","f5","sniffa","leaked","rime","ayy 󠀀","unlucky","hahahahah","loll","lolol","looooool","lfg","hi guys","hacked","ye","awww","bra","ww beavo","taway","wedidit","lazer woo","assept","let it go","ww siggy","12","oop","whatttt","oh my god","never","ha","focus","looool","wwwwwwwwwwwww","this guy","wth","wwwwwwwwwwww","pwr","yooooo","jorkin","lmaaooo","ez points","?????????????","hell nah","mmmmmmmmmmmmmm","here he go","pffttt 󠀀","ewwwwww","clix","cap of doom","darla","damn lacy","sup","thx","i was here","nvm","well well well","huh?","brother","pause","clueless","hlo","ahahahaha","lies","ta 󠀀","ome44 󠀀","jira","noticinggg","call clix","pffttt pffttt","lmfaooooooooooooo","max coming","ww elizabeth","gerd","ez clap","bwajaja","lock in","dang","noo","close","aint no way","red","eu","nahhhhh","peepodj","ewwwwwww","ayooo","gachibass","jungcooked","alien3","hinge","herewego","hollon","big oz","gl","uwu","lollll","ayoooo","uh","oi","lmaooooooooooo","black","ohhh","hi everyone","tc","السماء الزرقاء","we back","lets gooooo","wwwwwwwwwwwwww","offline","huh 󠀀","catpls","cappp","asked and answered","ww 10","ll ego","lmfao lmfao lmfao","ww press","gg lacy","lmfaoooooooooooo","xqc","ick monster","bob","huhh","cooked","chill","yessss","lololol","let's go","pari g sis","hehe","nhi","привет","woooo","ai","lets goo","tuff","w torsos","feed bepsy","ewww 󠀀","steph curry","ironic","ta attack","ll jason","mmmmmmmmmmmmm","mmmmmmmmmmmm","blm","ww jax","l print","nice shot","lool","football","clean","aww","sorry","yesssss","hello guys","max","ruined","sakina are","hahahahahaha","nothing","lady","bholenath","boom","o na","widespeedlaugh2","knutwalk","hah 󠀀","juuh","relevance","marie","pre 3","pre 10","ww mans","pity 8","show the edit","cap cap","dude","ty","wrong","sadge","copium","flirt","normal","hasan","nooooooo","timing","who is this","hey everyone","guys","you","hm","well","pred","interesting","loooool","yoooooo","what happened","hallowfall","gg 󠀀","aliendance","? 󠀀","waste of time","wow 󠀀","ll host","yap","oh hell nah","check","oz","jax","capp","solos","man of bumps","19","403","lucky","good morning","washed","brooo","ahahaha","wrong boots","??????????????","run","heyy","omggggg","hi all","المحققة ؟","forsen","ohh",".....","omgggg","l ads","what is this","mrsavaben","gg's","nahhhhhh","call him","aware","bang","cs","khanada","santi","pfffttt","night trap","raid","ww jason","omefaded","ll print","hiii colleen","duos","play cmb","arky lying","rofl","yikes","good one","lolll","noooooooo",".......","uhm","omgg","amen","ouch","sigma","usa","boring","gym","pls","mods","bathroom entrance","xit","ewwwwwwww","alizee","wolfie","me too","emp","......","good boy","oj","last","عليكم السلام","ggm1","ta ta ta","uhhhhh","firstgarf","ez 4 m80","ooooo","noway 󠀀","na defense","objection","casa","hell no","widereacting","ww instigator","lfmao","jasssssssson","lmaaaoooo","bring us with you","10/10","ftc","mr 5.5","arky45","lmfao arky","maybe","wut","gg ez","almost","zzz","good night","weird","sure","widevibe","no shot","click","jk","gggg","woo","ads","qual","moi 7e luokka","um","who?","oops","man","wait","ugh","eh","he is","mit wem spielt er","muted","benn","feelsstrongman","hell yeah","derp2","cuuh","rizz","camariah","deadge","???????????????","booba","ll poll","miz","ick","raid veno","hiii 󠀀","abb demon","0/3","oh nahhh","w elizabeth","show edit","arkyyy","check earnings","400k a month","squads","kc","letttss gooooo maxx","14","1000","amazing","lul","wat","i do",":(","broo","who cares","gooo","it is","erm","oh brother","okk","peace","goodnight","chat","woww","bye bye","morning","elsa","tsunami","hn","ok bye","gogeta","really","priya","sa","ciao","huhhhh","lotus","blue sky","ong","lets goooooooo","pfffft","e z","moin","whatt","wwwwwwwwwwwwwww","yessir","kekl","dance","just go","w red","oooooo","niceee","w deshae","call deshae","vip","veno","分かった","weirdo","lmfoa","behind you","ayy ayy","w cap","noticing","o z","what?????","what is happening","lmaoooooooooooooo","ww yay","ar","jassssssssson","rime mommy","ww t1","devry","4love lac","oh hell no","oooo 50","jumpscare","mmmmmmmmmmmmmmm","ww john","w lacy","lmaoooooooooooo","w jax","play max song","buh buh","man of steel","buh buh buh","cmon kc","13","50","150","good luck","np","right","so close","congratulations","joever","lolololol","please","welp","fair","my goat","wowwww","womp womp","not bad","whatttttt","again","lets goooooo","next week","there is","perfect","ooof","oh boy","alisha","sumedh","si","walaikum assalam","card","hahahahahahaha","wha","blackjack","i love it","xddd","heyyyy","hlw","hmmmmm","yooooooooo","kyu","scatter","うん","hallo","*sips horchata*","oo","hi chat","ozempic","rezon","ne","w graal","foul ball","meatloaf","mm","come on","lmaooooooooooooo","lmaaaooo","oh god","oh nahh","nessie","ome3","schizo","what a pass","gooner","ottt","bye az","ww pr","l ego","geng washed","piece red","reallymad","oce > na","mizunprepared","uuhh","dead","can i play","furia","full motion video","ron dtm","chip 󠀀","lmfaoooooooooooooo","????????????????","ww predify","hiii hiii","commmmmmmmmmm","nobody said that","honey pack","edit","capppp","pre 4","frank ocean","ww deji","short","hot to go","ssg","16","awesome","hype","kk","nice one","sheeeesh","wait what","crashout","the goat","bro...","noice","both","here we go again","yapping","we?","w stream","omggggggg","why not","cute","cheers","none","niceeee","اي","not really","help","hii guys","fadak","да","boy","hiiiiii","anyways","jay one","yoooooooo","hell","sakin","ahhhh","hail","ron","get it","sell","ope","w song","complent","bye guys","ggg","richa","dont","its over","nooooooooo","fff","glazing","gg gg","yo bro","twink","awwww","hack","ww ww ww","ww adapt","col is finished","kirbycoom","vip deshae","lmfao what","rizz dot","no ot","l host","free palestine","i am","activationfingers","lets go pwr","gggggg","ayy2","cs2","ww timing","loooooooooool","delete capcut","uuh uuh uuh","???????????????????","ugly emp","ta lk","jason?","jason","bedge","this guy hah","hdmi","ww gooner","both?","caught caught","helloimmaxwell","what???","huh huh","0/4","cap of hell","w h a t","mmmmmmmmmmmmmmmm","owow","vinnie","ww 45","piece arky","srry","lacy cap","arky capping","ww bepsy","22","26","kappa","lulw","calculated","amogus","nice try","noted","waiting","nooooooooooo","cope","hahahhaha","easy","awkward","what is going on","whoa","ummm","ok ok",":3","nodders","q first","so","hahahahha","ban","byeee","ya","rose","görüşürüzz","skibidi sigma","aw","اوك","مرحبا","yeahh","left","niharika","gtk","لا","omg lol","hello all","umm","hello?","hi faith","good morning faith","hi.","gulp","cherry","kevin","how are you","*chuckles*","ohhhh","oxygen","سلام عليكم","og","alr","free","hi happy","l beard","-_-","goty","tata","no lol","comm","maram","savage","hahahahahah","ayo?","thank god","sick","looooooooool","holy crap","sez u","wowww","bepsy aura","lift0","alien44","ome20","lazy","w gifted","ayoooooo","yessssss","vip him","xdd 󠀀","jeez","qual?","ww hasan","yam","monkers","w pwr","luck","letsgooo","na washed","real voice lmfao","ww 808","o7 󠀀","firstdork","dumbass","hard watch","goon","dragging it","ww lag","ww f","sheeesh","hah mods","drops","u did this","o ma","o 󠀀","ravetime","lll","bs","commm","ron stfu","w hasan","yooooooo","ome44 ome44","jassssssson","jasssssssssssson","jasssssson","sonii","will","he coming","elizabeth","hah hah hah","fake chat","nahhhhhhh","w honesty","chopped","tacaught","lunch","w max","lmfaooooooooooooooo","uhhhh","ewwwwwwwwww","rockin","5k","check his earnings","trios","freak","lmfao max","arky lmao","what 󠀀","poor dude","8.3","15","peepoclap","ayyy","clutch","gn","happy birthday","congrats","blabbering","off","this is crazy","sad","so true","val","game","saved","noooooooooooooo","noooooooooo","bro?","lets gooooooooo","big w","ah","hahahahhahaha","miami","japan","valorant","good flash","hahahahahahahaha","assalamualaikum","good job","its ok","oh yeah","hold","i agree","bruhhh","liar","w gooner","tupang","word","cmon","green","00","love","win","wsg","احبك","=)","helloo","i knew it","accha","null","lupz","hy","me?","yeahhh","adios","privet","selam","kartal","holy moly","helloooo","ahh","dang it","absolute cinema","kicks","im back","nhii","may","ha?","hahhaha","hnnn","beard","janvi","lol.","what a shot","ns","rip az","yassss","respect","yash bro","whoops","aliyeva","اتقوا الله","***","ne(yankili)","jt","hnn","homie","im dying","qualed ?","ggez","grim.","nein","كيفن","kick jt","usa usa usa","هههههههه","madge","why skip","na production","ez 󠀀","ww ad","ta ta ta ta","knutready","rug juice","relax","yes 󠀀","gg\\","ll friend","pffttt2","gay af","coming","ww asian brother","regret","w save","daddy","call","was","no no no","ww santi","disgusting","lmaoaoa","weebsdetected","colleen","my oil","brooooo","what the","ego 󠀀","awwe","weak","wuh","ew 󠀀","w press","oooo oooo","speak up","nepo","ليلي","ooooooo","lmaaoo","whats going on","you got this","my points","omescrajj","gigachad sonii","send it to cinna","jorkers","ooh","nowaying","lacy comment","bricked","lets go furia","lmaoooooooooo 󠀀","l ad","w ad","reacting","solo cc","what????","poor guy","jassssssssssson","taj","taassemble","0-3 esports","commmmmmmmmmmm","commmmmmmmmm","lock the door","hes coming","play it","damm","bad pics","pre 5","ofcccc","jerry woo","omestare","pre 1","oh nahhhh","lmao lmao","wow wow","silky","jerkify","kiss","6????","do xqc","arkyyyy","امين","w h a tt","check it","lmfaoaooo","saj 󠀀","emilio","so jason","well stream","arky lmfao","capping 󠀀","tya","piece vinnie","om 󠀀","5.3","the man of meat","man of shmeat","duke","no f","17","21","23","greetings","well played","absolutely","correct"])
+
+let longestLength = 19; // safePhrases.reduce((maxLength, str) => Math.max(maxLength, str.length), 0);
+var quickPass = 0;
+var newlyAdded = 0;
+
+function isSafePhrase(data) {
+	
+	let cleanedText = data.chatmessage;
+            
+    if (!data.textonly) {
+        cleanedText = decodeAndCleanHtml(cleanedText);
+    }
+	
+	cleanedText = cleanedText.replace(/\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu, "").replace(/[\u200D\uFE0F]/g, ""); // Remove zero-width joiner and variation selector
+	cleanedText = cleanedText.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/gi, ""); // fail safe?
+	cleanedText = cleanedText.replace(/[\r\n]+/g, "").replace(/\s+/g, " ").trim();
+	cleanedText = cleanedText.toLowerCase();
+	 
+    if (!cleanedText) { // nothing, so it's safe.
+        return { isSafe: true, cleanedText: "" };
+    }
+    if (cleanedText.length > longestLength) {
+        return { isSafe: false, cleanedText };
+    }
+    if (!cleanedText) {
+        return { isSafe: true, cleanedText };
+    }
+    if (cleanedText.length == 1) {
+        return { isSafe: true, cleanedText };
+    }
+    return { isSafe: safePhrasesSet.has(cleanedText), cleanedText };
+}
+
+function setToObject(set) {
+  return Object.fromEntries(
+    Array.from(set).map(value => [value, 1])
+  );
+}
+function getTop100(obj, total=100) {
+  const entries = Object.entries(obj);
+  entries.sort((a, b) => b[1] - a[1]);
+  const top100 = entries.slice(0, total);
+  return top100.map(entry => entry[0]);
+}
+
+//let safePhrasesObject = setToObject(safePhrasesSet)
+function addSafePhrase(cleanedText, score=-1) {
+	//if (score>1){return;}
+	if (cleanedText.length>longestLength){return}; // too long to validate
+	if (!cleanedText){return};
+	if (cleanedText.length==1){return}; // single characeter; must be safe
+	safePhrasesSet.add(cleanedText);
+	newlyAdded+=1;
+	//if (safePhrasesObject[cleanedText]){ // remoev this object part, as I dont need it in productino.
+	//	safePhrasesObject[cleanedText] +=1;
+	//} else {
+	//	safePhrasesObject[cleanedText] = 1;
+	//}
+	//log("Added ("+score+"): "+cleanedText);
+}
+
 
 let censorProcessingSlots = [false, false, false]; // ollama can handle 4 requests at a time by default I think, but 3 is a good number.
 async function censorMessageWithOllama(data) {
     if (!data.chatmessage) {
         return true;
     }
+	
+	const { isSafe, cleanedText } = isSafePhrase(data);
+	
+	if (isSafe){
+		addRecentMessage(cleanedText);
+		quickPass+=1;
+		return true;
+	} // it's safe
 
     const availableSlot = censorProcessingSlots.findIndex(slot => !slot);
     if (availableSlot === -1) {
@@ -232,32 +484,134 @@ async function censorMessageWithOllama(data) {
         if (data.chatname) {
             censorInstructions += data.chatname + " says: ";
         }
-        if (data.chatmessage) {
-            censorInstructions += data.chatmessage;
+        if (cleanedText) {
+            censorInstructions += cleanedText;
         }
         let llmOutput = await callOllamaAPI(censorInstructions);
-        //console.log(llmOutput);
+		
+		censorProcessingSlots[availableSlot] = false;
+		
+        //log(llmOutput);
         let match = llmOutput.match(/\d+/);
         let score = match ? parseInt(match[0]) : 0;
-        //console.log(score);
+        //log(score);
 
         if (score > 3 || llmOutput.length > 1) {
+			//log("Bad phrase: "+data.chatname +" said " +cleanedText);
             if (settings.ollamaCensorBotBlockMode) {
                 return false;
             } else if (isExtensionOn) {
-                //console.log("sending a delete out");
+                //log("sending a delete out");
                 sendToDestinations({ delete: data });
             }
+			return false;
         } else {
+			addSafePhrase(cleanedText, score);
+			addRecentMessage(cleanedText);
             return true;
         }
     } catch (error) {
-        console.error("Error processing message:", error);
+        console.warn("Error processing message:", error);
     } finally {
         censorProcessingSlots[availableSlot] = false;
     }
     return false;
 }
+
+//
+const recentMessages = [];
+const MAX_RECENT_MESSAGES = 10;
+
+function addRecentMessage(message) {
+    recentMessages.push(message);
+    if (recentMessages.length > MAX_RECENT_MESSAGES) {
+        recentMessages.shift(); // Remove the oldest message if we exceed the limit
+    }
+}
+
+async function censorMessageWithHistory(data) {
+    if (!data.chatmessage) {
+        return true;
+    }
+	
+	let cleanedText = data.chatmessage;
+	if (!data.textonly) {
+		cleanedText = decodeAndCleanHtml(cleanedText);
+	}
+	
+    const availableSlot = censorProcessingSlots.findIndex(slot => !slot);
+    if (availableSlot === -1) {
+        return false; // All slots are occupied
+    }
+    censorProcessingSlots[availableSlot] = true;
+
+    try {
+		
+        let censorInstructions = `Analyze the following live text chat history and the latest message for any signs of hate, extreme negativity, foul language, swear words, bad words, profanity, racism, sexism, political messaging, civil war, violence, threats, or any content that may be offensive to a general public audience. Messages may be long or very short, such as a single letter or a collection of emoji-based characters. Pay special attention to words that might be spelled out across multiple messages. Respond ONLY with a number rating out of 5, where 0 implies no offensive content and 5 implies clearly offensive content. Any message containing profanity or curse words automatically qualifies as a 5. ONLY respond with a number between 0 and 5 and nothing else.
+
+Recent chat history:
+${recentMessages.join('\n')}
+
+Latest message:
+${data.chatname} says: ${cleanedText}`;
+
+        let llmOutput = await callOllamaAPI(censorInstructions);
+		
+        censorProcessingSlots[availableSlot] = false;
+        
+        let match = llmOutput.match(/\d+/);
+        let score = match ? parseInt(match[0]) : 0;
+        
+        if (score > 3 || llmOutput.length > 1) {
+            if (settings.ollamaCensorBotBlockMode) {
+                return false;
+            } else if (isExtensionOn) {
+                sendToDestinations({ delete: data });
+            }
+            return false;
+        } else {
+            addSafePhrase(cleanedText, score);
+			addRecentMessage(cleanedText);
+            return true;
+        }
+    } catch (error) {
+        console.warn("Error processing message history:", error);
+    } finally {
+        censorProcessingSlots[availableSlot] = false;
+    }
+    return false;
+}
+
+// Function to get recent messages from IndexedDB
+function getRecentMessages(chatname, limit, timeWindow) {
+    return new Promise((resolve, reject) => {
+        const endTime = new Date();
+        const startTime = new Date(endTime.getTime() - timeWindow);
+        
+        const transaction = db.transaction([storeName], "readonly");
+        const store = transaction.objectStore(storeName);
+        const index = store.index("unique_user");
+        const range = IDBKeyRange.bound([chatname, "user"], [chatname, "user"]);
+        
+        const request = index.openCursor(range, "prev");
+        const results = [];
+        
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor && results.length < limit && cursor.value.timestamp >= startTime) {
+                results.push(cursor.value);
+                cursor.continue();
+            } else {
+                resolve(results);
+            }
+        };
+        
+        request.onerror = (event) => {
+            reject(new Error("Error fetching recent messages: " + event.target.error));
+        };
+    });
+}
+
 
 let isProcessing = false;
 const lastResponseTime = {};
@@ -272,10 +626,13 @@ async function processMessageWithOllama(data) {
 	if (settings.ollamaRateLimitPerTab){
 		ollamaRateLimitPerTab = Math.max(0, parseInt(settings.ollamaRateLimitPerTab.numbersetting)||0);
 	}
-    if (lastResponseTime[data.tid] && (currentTime - lastResponseTime[data.tid] < ollamaRateLimitPerTab)) {
-		isProcessing = false;
-        return; // Skip this message if we've responded recently
-    }
+	
+	if (!settings.ollamaoverlayonly){
+		if (lastResponseTime[data.tid] && (currentTime - lastResponseTime[data.tid] < ollamaRateLimitPerTab)) {
+			isProcessing = false;
+			return; // Skip this message if we've responded recently
+		}
+	}
     
 	let botname = "🤖💬";
 	if (settings.ollamabotname && settings.ollamabotname.textsetting){
@@ -317,17 +674,23 @@ async function processMessageWithOllama(data) {
 			botname = settings.ollamabotname.textsetting.trim();
 		}
         const response = await processUserInput(cleanedText, data, additionalInstructions);
-		log(response);
-		if (response){
-			const msg = {
-				tid: data.tid,
-				response: botname+": " + response.trim()
-			};
-			processResponse(msg);
-			lastResponseTime[data.tid] = Date.now();
+		
+		if (response && !(response.toLowerCase().startsWith("not available"))){
+			
+			sendTargetP2P({"chatmessage":response,"chatname":botname, "chatimg":"./icons/bot.png", "type":"socialstream", "request": data, "tts": (settings.ollamatts ? true : false)}, "bot");
+			
+			if (!settings.ollamaoverlayonly){
+				const msg = {
+					tid: data.tid,
+					response: botname+": " + response.trim()
+				};
+				processResponse(msg);
+			
+				lastResponseTime[data.tid] = Date.now();
+			}
 		}
     } catch (error) {
-        console.error("Error processing message:", error);
+        console.warn("Error processing message:", error);
     } finally {
         isProcessing = false;
     }
@@ -538,7 +901,7 @@ Do not include any other text or explanations outside these sections.`;
 			// Log the processed chunk for debugging
 			logProcessedChunk(parsedData, index);
 		} catch (error) {
-			console.error(`Error processing chunk ${index + 1}:`, error);
+			console.warn(`Error processing chunk ${index + 1}:`, error);
 		}
 
         // Add a small delay between chunks, to let things breath a bit.
@@ -554,7 +917,7 @@ ${processedChunks.map(chunk => chunk.summary).join('\n')}`;
     try {
         overallSummary = await callOllamaAPI(overallSummaryPrompt);
     } catch (error) {
-        console.error("Error generating overall summary:", error);
+        console.warn("Error generating overall summary:", error);
         overallSummary = "Failed to generate overall summary";
     }
 
@@ -657,9 +1020,9 @@ Do not include any other text or explanations outside these sections.`;
             const decision = parseDecision(llmOutput);
             
             if (decision.needsSearch) {
-                //console.log("Performing search with query:", decision.searchQuery);
+                //log("Performing search with query:", decision.searchQuery);
                 const searchResults = await performSearch(decision.searchQuery);
-                //console.log("Search results:", searchResults);
+                //log("Search results:", searchResults);
                 return await generateResponseWithSearchResults(userInput, searchResults, data.chatname || 'user', additionalInstructions);
             } else {
                 return decision.response;
@@ -673,13 +1036,13 @@ User ${data.chatname || 'user'} says: ${userInput}
 Your response:`;
 			log(userInput);
             let response =  await callOllamaAPI(prompt);
-			if (!response || response.includes("NO_RESPONSE")){
+			if (!response || response.includes("NO_RESPONSE") || response.startsWith("No ") || response.startsWith("NO ")){
 				return false;
 			}
 			return response;
         }
     } catch (error) {
-        console.error("Error processing user input:", error);
+        console.warn("Error processing user input:", error);
         return "I'm sorry, I encountered an error while processing your request.";
     }
 }
@@ -743,7 +1106,7 @@ async function clearDatabase() {
         
         log("Database cleared successfully");
     } catch (error) {
-        console.error("Error clearing database:", error);
+        console.warn("Error clearing database:", error);
     }
 }
 
@@ -755,7 +1118,7 @@ async function performSearch(query) {
     const searchQuery = keywords.map(keyword => `+${keyword}`).join(' ');
     const results = globalLunrIndex.search(query);
     if (results.length === 0) {
-        //console.log("No results found for query:", query);
+        //log("No results found for query:", query);
         // Perform a more lenient search
         return globalLunrIndex.search(keywords.map(word => `${word}~1`).join(' ')).map(result => ({
             ref: result.ref,
@@ -772,7 +1135,7 @@ async function generateResponseWithSearchResults(userInput, searchResults, chatn
     try {
         const relevantDocs = await getDocumentsFromSearchResults(searchResults);
         
-        //console.log("Relevant docs:", relevantDocs);
+        //log("Relevant docs:", relevantDocs);
 
         const validDocs = relevantDocs.filter(doc => doc !== null && doc.content);
         
@@ -792,7 +1155,7 @@ async function generateResponseWithSearchResults(userInput, searchResults, chatn
             usedChunks++;
         }
 
-        console.log("Combined content:", combinedContent);
+        log("Combined content:", combinedContent);
 
         const prompt = `You are an AI assistant. ${additionalInstructions || ''}
 
@@ -808,7 +1171,7 @@ Provide a concise and informative response based on the above information. Your 
 
         return await callOllamaAPI(prompt);
     } catch (error) {
-        console.error("Error in generateResponseWithSearchResults:", error);
+        console.warn("Error in generateResponseWithSearchResults:", error);
         return "I'm sorry, I encountered an error while processing your request. Please try again later.";
     }
 }
@@ -835,7 +1198,7 @@ async function getDocumentsFromSearchResults(searchResults) {
                 request.onsuccess = () => resolve(request.result);
             });
             
-            //console.log(`Retrieved document for id ${docId}:`, doc); // Add this line for debugging
+            //log(`Retrieved document for id ${docId}:`, doc); // Add this line for debugging
 
             if (!doc) {
                 //console.warn(`Document not found for id: ${docId}`);
@@ -844,7 +1207,7 @@ async function getDocumentsFromSearchResults(searchResults) {
             
             if (doc.chunks && chunkIndex) {
                 const chunk = doc.chunks[parseInt(chunkIndex)];
-                //console.log(`Retrieved chunk for index ${chunkIndex}:`, chunk); // Add this line for debugging
+                //log(`Retrieved chunk for index ${chunkIndex}:`, chunk); // Add this line for debugging
                 return chunk ? { 
                     content: chunk.content, 
                     tags: chunk.tags, 
@@ -860,7 +1223,7 @@ async function getDocumentsFromSearchResults(searchResults) {
                 summary: doc.overallSummary
             };
         } catch (error) {
-            console.error(`Error retrieving document ${docId}:`, error);
+            console.warn(`Error retrieving document ${docId}:`, error);
             return null;
         }
     }));
@@ -951,7 +1314,7 @@ function sanitizeAndParseJSON(jsonString) {
     if (parsedJSON) return ensureCorrectStructure(parsedJSON);
 
     //console.warn("Failed to parse JSON even after sanitization");
-    //console.log("Problematic JSON string:", jsonString);
+    //log("Problematic JSON string:", jsonString);
     return false;
 }
 
@@ -1028,7 +1391,7 @@ async function addToLunrIndex(doc) {
         globalLunrIndex.add(doc);
         log(`Added document to Lunr index: ${doc.id}`);
     } catch (error) {
-        console.error(`Error adding document to Lunr index: ${doc.id}`, error);
+        console.warn(`Error adding document to Lunr index: ${doc.id}`, error);
     }
 }
 
@@ -1100,7 +1463,7 @@ async function inspectDatabase() {
         request.onsuccess = () => resolve(request.result);
     });
 
-    console.log('Database Contents:');
+    log('Database Contents:');
     docs.forEach((doc, index) => {
         log(`Document ${index + 1}:`);
         log(`  ID: ${doc.id}`);
@@ -1113,7 +1476,7 @@ async function inspectDatabase() {
                 logProcessedChunk(chunk, c);
             });
         } else {
-           // console.log('  Content:', doc.content ? doc.content.substring(0, 200) + '...' : 'N/A');
+           // log('  Content:', doc.content ? doc.content.substring(0, 200) + '...' : 'N/A');
         }
         log('');
     });
@@ -1134,7 +1497,7 @@ async function loadLunrIndex() {
             request.onsuccess = () => resolve(request.result);
         });
 
-       // console.log('Retrieved documents:', allDocs);
+       // log('Retrieved documents:', allDocs);
 
         const documents = [];
         allDocs.forEach(doc => {
@@ -1161,14 +1524,14 @@ async function loadLunrIndex() {
             }
         });
 
-       // console.log('Prepared documents for Lunr:', documents);
+       // log('Prepared documents for Lunr:', documents);
 
         globalLunrIndex = initLunrIndex(documents);
         log('Lunr index initialized');
 
         return globalLunrIndex;
     } catch (error) {
-        console.error("Error loading Lunr index:", error);
+        console.warn("Error loading Lunr index:", error);
         return initLunrIndex([]); // Return an empty index if there's an error
     }
 }
@@ -1198,7 +1561,7 @@ function initLunrIndex(documents) {
 
 async function saveLunrIndex() {
     if (!globalLunrIndex) {
-        console.error("Attempting to save undefined Lunr index");
+        console.warn("Attempting to save undefined Lunr index");
         return;
     }
     try {
@@ -1209,7 +1572,7 @@ async function saveLunrIndex() {
         await store.put(serializedIndex, 'currentIndex');
         log("Lunr index saved successfully");
     } catch (error) {
-        console.error("Error saving Lunr index:", error);
+        console.warn("Error saving Lunr index:", error);
     }
 }
 
@@ -1268,7 +1631,7 @@ async function indexProcessedDocument(docId, processedDoc, title) {
         // Send updated documentsRAG to popup
         messagePopup({documents: documentsRAG});
     } catch (error) {
-        console.error("Error indexing document:", error);
+        console.warn("Error indexing document:", error);
     }
 }
 
@@ -1400,7 +1763,7 @@ async function deleteDocument(docId) {
         await saveLunrIndex();
         await updateDatabaseDescriptor();
     } catch (error) {
-        console.error("Error deleting document:", error);
+        console.warn("Error deleting document:", error);
         if (docIndex !== -1) {
             documentsRAG[docIndex].status = 'Delete Failed';
         }
@@ -1438,7 +1801,7 @@ Focus on key topics, themes, and types of information available.`;
 			localStorage.setItem('databaseDescriptor', descriptor.trim());
 		}
     } catch (error) {
-        console.error("Error updating database descriptor:", error);
+        console.warn("Error updating database descriptor:", error);
         localStorage.setItem('databaseDescriptor', 'Error generating database description.');
     }
 }
@@ -1496,7 +1859,7 @@ async function processUploadQueue() {
 			documentsRAG = documentsRAG.filter(doc => doc.id !== docId);
 		}
     } catch (error) {
-        console.error("Error processing document:", error);
+        console.warn("Error processing document:", error);
         updateDocumentProgress(docId, 0, 'Failed');
     }
     messagePopup({documents: documentsRAG});
@@ -1519,7 +1882,7 @@ async function importSettingsLLM(usePreprocessing = true) {
         
         log("Import completed successfully");
     } catch (e) {
-        console.error("Error in importSettings:", e);
+        console.warn("Error in importSettings:", e);
         alert("Error processing file: " + e.message);
     }
 }
@@ -1575,18 +1938,18 @@ async function someTestFunction() {
 document.addEventListener('DOMContentLoaded', async function() {
     try {
 		loadDocumentsFromDB().then(() => {
-			//console.log("Documents loaded from DB:", documentsRAG);
+			//log("Documents loaded from DB:", documentsRAG);
 		}).catch(error => {
-			console.error("Error loading documents from DB:", error);
+			console.warn("Error loading documents from DB:", error);
 		});
         loadLunrIndex().then(index => {
-			//console.log("Lunr index loaded:", index);
+			//log("Lunr index loaded:", index);
 			
-			//console.log("Number of documents in index:", Object.keys(index.fieldVectors).length / index.fields.length);
+			//log("Number of documents in index:", Object.keys(index.fieldVectors).length / index.fields.length);
 		}).catch(error => {
-			console.error("Error loading index:", error);
+			console.warn("Error loading index:", error);
 		});
     } catch (error) {
-        console.error("Error initializing Lunr index:", error);
+        console.warn("Error initializing Lunr index:", error);
     }
 });

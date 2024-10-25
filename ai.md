@@ -13,20 +13,25 @@ https://ollama.com
 
 There's many choices available; go to https://ollama.com/library for a list of options.
 
-Social Stream Ninja targets Llama3.1 by default, but you can specify the model to use the Social Stream Ninja menu. For now though, let's just use `llama3.1`
+Social Stream Ninja targets Llama3.2 by default, but you can specify the model to use the Social Stream Ninja menu. For now though, let's just use `llama3.2`
 
 To install the model, lets open Command Prompt (or Terminal)
-`> ollama pull llama3.1`
+`> ollama pull llama3.2`
 
 ![image](https://github.com/user-attachments/assets/4852506e-7761-47d1-99ce-8b2b01f34bac)
+
+Once it finishes install the model, you should have the model installed, and the option to list available installed models should confirm it.
+
+![image](https://github.com/user-attachments/assets/b7eee74f-b2f4-47c0-8f55-80d239a3c3b2)
+
 
 If you need to remove it, you can run `ollama rm llama3`. 
 
 ![image](https://github.com/user-attachments/assets/235ec0fb-aa70-4206-8b8d-98dbe173a096)
 
-It will be available for API access by default at `http://localhost:11434`, however, there are still issues with CORS we need to deal with if using the Chrome extension.
+It will be available for API access by default at `http://localhost:11434`, which if you open via the browser, it shoudl save Ollama is running. However, there are still issues with CORS we need to deal with if using the Chrome extension. That is, by default, Ollama won't listen to requests made by a Chrome extension.
 
-For windows, you can try close Ollama.exe from the taskbar, and then run the following:
+To get around this CORS issue, for windows, you can try close Ollama.exe from the taskbar, and then run the following:
 ```
 ollama serve stop
 taskkill /F /IM ollama.exe
@@ -38,7 +43,13 @@ To make this CORS permission permanant on Windows, you need to add OLLAMA_ORIGIN
 
 ![image](https://github.com/user-attachments/assets/065d69a6-2773-4ddd-a290-1b57660955af)
 
-This allows us to access Ollama from our Social Stream Ninja extension.  If you want to use it via the dock.html page, with custom.js commands, you may need to host Ollama behind a reverse proxy service. Refer to their documentation for info on this.
+This allows us to access Ollama from our Social Stream Ninja extension.
+
+I don't believe you need to worry about CORS if using the Social Stream Ninja standalone app, HOWEVER, if you are using the standalone app, and are running into issues, you can set the `OLLAMA_ORIGINS` to `*`.  If you're comfortable, you can set do this via the "Edit the system environment variables" in Windows, instead of via command line. Be sure to close and re-open Ollama if you do this however. Below is how I have it setup, and it works with both extension AND standalone app.
+
+![image](https://github.com/user-attachments/assets/7587ed12-aa85-498c-8cd4-25fdb56a6543)
+
+If you want to access Ollama directly via the dock.html page, with custom.js commands, you may need to host Ollama behind a reverse proxy service. Refer to their documentation for info on this.
 
 ## Using
 

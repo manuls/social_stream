@@ -1,13 +1,33 @@
+
 (function () {
 	
-	function pushMessage(data) {
+	
+	function checkConditions(element) {
+	  // Get all siblings of the element
+	  const siblings = Array.from(element.parentNode.children);
+	  const index = siblings.indexOf(element);
+
+	  // Condition 1: Closer to the bottom than the top
+	  const isCloserToBottom = index > siblings.length / 2;
+
+	  // Condition 2: Any sibling after it doesn't have "data-set" attribute
+	  const hasUnattributedSiblingAfter = siblings.slice(index + 1).some(sibling => !sibling.hasAttribute('data-set'));
+
+	  // Condition 3: Less than 99 siblings
+	  const hasLessThan99Siblings = siblings.length < 99; // this probably could be increased
+
+	  // Return true if any condition is met
+	  return isCloserToBottom || hasUnattributedSiblingAfter || hasLessThan99Siblings;
+	}
+	
+	function pushMessage(data, ele =false) {
 	  try {
 		  
 		// Create a unique key for the message
 		const messageKey = `${data.chatname}:${data.chatmessage}:${data.contentimg}`;
 
 		// Check if this message already exists in the history
-		if (!messageHistory.includes(messageKey)) {
+		if (!messageHistory.includes(messageKey) || (ele && checkConditions(ele))) {
 		  // If it's a new message, add it to the history
 		  messageHistory.push(messageKey);
 
@@ -22,7 +42,7 @@
 			}
 		  });
 		} else {
-		 // console.log('Duplicate message filtered out:', messageKey);
+		  //console.log('Duplicate message filtered out:', messageKey);
 		}
 	  } catch (e) {
 		//console.error('Error in pushMessage:', e);
@@ -506,16 +526,16 @@
 	  
 		if (data.chatimg){
 			try{
-			toDataURL(data.chatimg, function(dataUrl) {
+			toDataURL(data.chatimg, (dataUrl) =>{
 				data.chatimg = dataUrl;
-				pushMessage(data);
+				pushMessage(data, ele);
 			});
 			} catch(e){
 				//console.log(e);
 			}
 		} else {
 			data.chatimg = "";
-			pushMessage(data);
+			pushMessage(data, ele);
 		}
 	}
 	
@@ -544,8 +564,8 @@
 				
 				for (var j =0;j<main.length;j++){
 					try{
-						if (!main[j].dataset.set123){
-							main[j].dataset.set123 = "true";
+						if (!main[j].dataset.set){
+							main[j].dataset.set = "true";
 							// processMessageIGLive(main[j]);
 						} 
 					} catch(e){}
@@ -560,13 +580,13 @@
 			}
 		
 			try {
-				if (window.location.pathname.includes("/live") || (window.location.pathname==="/")){
+				if (window.location.pathname.includes("/live") || (window.location.pathname.endsWith("/") || document.querySelector("video") || document.querySelector("textarea")) || (window.location.pathname==="/")){
 					try {
 						var main = document.querySelectorAll("div>div>section>div");
 						for (var j =0;j<main.length;j++){
 							try{
-								if (!main[j].dataset.set123){
-									main[j].dataset.set123 = "true";
+								if (!main[j].dataset.set){
+									main[j].dataset.set = "live";
 									processMessageIGLive(main[j]);
 								} 
 							} catch(e){}
@@ -585,7 +605,7 @@
 									main[j].dataset.set = "post";
 									main[j].querySelectorAll("div[role='button']").forEach(xx=>{
 										if (xx.textContent === "more"){
-											xx.click();
+											//xx.click();
 										}
 									});
 									setTimeout(function(node){
